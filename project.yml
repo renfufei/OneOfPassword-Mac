@@ -1,0 +1,56 @@
+name: OneOfPassword
+options:
+  bundleIdPrefix: com.oneofpassword
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  SWIFT_VERSION: "5.9"
+  MACOSX_DEPLOYMENT_TARGET: "13.0"
+  ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  OneOfPassword:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: OneOfPassword
+        excludes:
+          - "**/*.md"
+    resources:
+      - path: OneOfPassword/Resources
+        optional: true
+      - path: OneOfPassword/Assets.xcassets
+    info:
+      path: OneOfPassword/Info.plist
+      properties:
+        CFBundleName: OneOfPassword
+        CFBundleDisplayName: OneOfPassword
+        CFBundleIdentifier: com.oneofpassword.app
+        CFBundleVersion: "69"
+        CFBundleShortVersionString: "1.69"
+        LSMinimumSystemVersion: "13.0"
+        NSCameraUsageDescription: 需要摄像头权限来扫描 GA 二维码
+        NSHumanReadableCopyright: "Copyright © 2026. All rights reserved."
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.oneofpassword.backup
+            UTTypeDescription: OneOfPassword Backup
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - 1pwd
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.oneofpassword.app
+      SWIFT_VERSION: "5.9"
+      INFOPLIST_FILE: OneOfPassword/Info.plist
+      CODE_SIGN_STYLE: Automatic
+      DEVELOPMENT_TEAM: ""
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: OneOfPassword/OneOfPassword.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
