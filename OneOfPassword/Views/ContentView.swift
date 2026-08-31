@@ -9,7 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum SidebarSection: String, Hashable {
-    case vault, settings
+    case vault, settings, screenshot
 }
 
 struct ContentView: View {
@@ -48,6 +48,12 @@ struct ContentView: View {
                         onNavigateToVault: { selectedSection = .vault },
                         pendingAction: $menuTrigger
                     )
+                }
+            } else if selectedSection == .screenshot {
+                NavigationSplitView {
+                    sidebar
+                } detail: {
+                    ScreenshotSettingsView()
                 }
             } else {
                 NavigationSplitView {
@@ -137,6 +143,7 @@ struct ContentView: View {
     private var sidebar: some View {
         List(selection: $selectedSection) {
             Label("保险库", systemImage: "person.badge.key.fill").tag(SidebarSection.vault)
+            Label("截屏",   systemImage: "crop").tag(SidebarSection.screenshot)
             Label("设置",   systemImage: "gearshape.fill").tag(SidebarSection.settings)
         }
         .navigationTitle("OneOfPassword")

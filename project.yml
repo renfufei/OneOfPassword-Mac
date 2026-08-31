@@ -30,8 +30,8 @@ targets:
         CFBundleName: OneOfPassword
         CFBundleDisplayName: OneOfPassword
         CFBundleIdentifier: com.oneofpassword.app
-        CFBundleVersion: "69"
-        CFBundleShortVersionString: "1.69"
+        CFBundleVersion: "71"
+        CFBundleShortVersionString: "1.71"
         LSMinimumSystemVersion: "13.0"
         NSCameraUsageDescription: 需要摄像头权限来扫描 GA 二维码
         NSHumanReadableCopyright: "Copyright © 2026. All rights reserved."

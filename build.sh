@@ -43,6 +43,7 @@ error()   { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 info "版本: $VERSION"
 
 [ -f "$PROJECT/project.pbxproj" ] || error "未找到 $PROJECT，请在项目根目录运行此脚本"
+
 command -v xcodebuild  >/dev/null || error "未找到 xcodebuild，请安装 Xcode"
 command -v xcodegen    >/dev/null || { warn "未找到 xcodegen，跳过项目生成步骤"; SKIP_XCODEGEN=1; }
 command -v hdiutil     >/dev/null || error "未找到 hdiutil"

@@ -10,6 +10,7 @@
 		06E4BF2ECD6834494C10B008 /* ExportWizardSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733B68E243F591537F2499E4 /* ExportWizardSheet.swift */; };
 		075343EAD0C3CC212096AAF1 /* CopyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38615C080E045A0BA09825C7 /* CopyButton.swift */; };
 		0DA78B5FFDE0AE22B61C9231 /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52E47334DFCBDFF5D7FDDA7 /* NoteEditorView.swift */; };
+		127709CE7D2F7BC3BF928338 /* AnnotationToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FA99878F35C2B84C0BFD52 /* AnnotationToolbar.swift */; };
 		137A823114348AD2AE3AF87D /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67042E821D4BE20D5B2B2B86 /* KeychainService.swift */; };
 		1F2C9A51476B393A1371D8C9 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66294288F91117C078AC651E /* DataStore.swift */; };
 		2F8F4E2088D191AC092F4378 /* OnePUXImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */; };
@@ -18,12 +19,17 @@
 		3F1D43508133611FC47F759C /* QRCodeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */; };
 		45D1A20855B7ECB120549970 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E124923AAE775D7998C228E0 /* AppDelegate.swift */; };
 		574EDF779AC0FCF6533DA894 /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F596C65B923B396579BFC8A /* ClipboardManager.swift */; };
+		58607B100344D6A086C31127 /* ScreenshotOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */; };
 		5B114E8F9FA6C1563B89B959 /* ItemCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E3E8B4A645B9E20FA3691B /* ItemCategory.swift */; };
+		63E4F631A2C6A981E6A1FE55 /* AnnotationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */; };
 		66257EC1D900D1DE7B751B4A /* EditingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23447C775659B86B06F6F3CA /* EditingState.swift */; };
 		69B1A83AF1D052E3AA07388C /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768BE1B4C7924E76F21F1580 /* QRScannerView.swift */; };
+		7147ADB3A359569AF92E24BC /* ScreenshotCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E500CC06D5E60BD9076BE49A /* ScreenshotCaptureService.swift */; };
 		865A6F614123D1EAC382B6DE /* AccountListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842B9020A1D36AA115739212 /* AccountListViewModel.swift */; };
 		8DF807F5AF0BF1F1E1D0762E /* NoteListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7261EEA17BEE7A7520C9DFC4 /* NoteListViewModel.swift */; };
+		95A44122F094E2C381B9038F /* ScreenshotHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6648FC35AD9C5E262553D882 /* ScreenshotHotkeyManager.swift */; };
 		9F077A58889554046437E351 /* AccountListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6CB2661E229A4FC48384C4 /* AccountListView.swift */; };
+		9FCFC11A1371E0C79F82FDDA /* ScreenshotOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49D2616C1BA5AD829C2B958 /* ScreenshotOverlayController.swift */; };
 		A524DE6D6365C8FFBA409077 /* NoteItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2082239993EDD1FE61F7AD /* NoteItem.swift */; };
 		AD4AB6D10D51BB30879D90CE /* ImportExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB24266E4A86E3CEF527F873 /* ImportExportService.swift */; };
 		B26D2FF972E30C8D494A57D9 /* OneOfPasswordApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7727AABA2FB86DC9213AC6 /* OneOfPasswordApp.swift */; };
@@ -34,6 +40,8 @@
 		D04A529326991CB7A3CE77B2 /* PasswordItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175266EEA35799F72532C4C0 /* PasswordItem.swift */; };
 		DD23DD7877D83988541AE8DF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60C9348870360445D81F9E3D /* ContentView.swift */; };
 		DD9ADAC4369B9C627BF0C93C /* PasswordListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB49CE912E26F0A2B975ACDC /* PasswordListViewModel.swift */; };
+		E99AC374D63C20E483966DA3 /* ScreenshotSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */; };
+		EEF7BD2EB66820594F97004F /* ScreenshotLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCDAE4B11961B57C1140C812 /* ScreenshotLogger.swift */; };
 		EFBB6A7534AE5628B711A80B /* EncryptedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB2D9029679A2778BFBFC49 /* EncryptedStore.swift */; };
 		FD79BA7F4FFBEC00DF423B4E /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED77E5926191ED9D14C10D9 /* NoteListView.swift */; };
 		FE5E3BF998AE4AD83CF7B396 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E48AE343AE0298673717DCA /* TOTPGenerator.swift */; };
@@ -42,15 +50,19 @@
 /* Begin PBXFileReference section */
 		07E3E8B4A645B9E20FA3691B /* ItemCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemCategory.swift; sourceTree = "<group>"; };
 		175266EEA35799F72532C4C0 /* PasswordItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordItem.swift; sourceTree = "<group>"; };
+		17FA99878F35C2B84C0BFD52 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
 		23447C775659B86B06F6F3CA /* EditingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditingState.swift; sourceTree = "<group>"; };
 		38615C080E045A0BA09825C7 /* CopyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyButton.swift; sourceTree = "<group>"; };
 		3FB2D9029679A2778BFBFC49 /* EncryptedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedStore.swift; sourceTree = "<group>"; };
+		41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSettingsView.swift; sourceTree = "<group>"; };
+		44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationModel.swift; sourceTree = "<group>"; };
 		4FD84ECBA0B7E0DF01E785F7 /* OneOfPassword.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OneOfPassword.entitlements; sourceTree = "<group>"; };
 		581BDC57D23E55F263EBCA5F /* OneOfPassword.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OneOfPassword.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D59BDA04AFCA786840307C8 /* VaultPreviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPreviewViews.swift; sourceTree = "<group>"; };
 		5E6CB2661E229A4FC48384C4 /* AccountListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountListView.swift; sourceTree = "<group>"; };
 		60C9348870360445D81F9E3D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		66294288F91117C078AC651E /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
+		6648FC35AD9C5E262553D882 /* ScreenshotHotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotHotkeyManager.swift; sourceTree = "<group>"; };
 		67042E821D4BE20D5B2B2B86 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		6E48AE343AE0298673717DCA /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
 		7261EEA17BEE7A7520C9DFC4 /* NoteListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListViewModel.swift; sourceTree = "<group>"; };
@@ -58,6 +70,7 @@
 		768BE1B4C7924E76F21F1580 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		842B9020A1D36AA115739212 /* AccountListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountListViewModel.swift; sourceTree = "<group>"; };
 		8434C2609890FBA7F349A6F8 /* AuthPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthPolicy.swift; sourceTree = "<group>"; };
+		8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotOverlayView.swift; sourceTree = "<group>"; };
 		8ED77E5926191ED9D14C10D9 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
 		9D7727AABA2FB86DC9213AC6 /* OneOfPasswordApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneOfPasswordApp.swift; sourceTree = "<group>"; };
 		9F596C65B923B396579BFC8A /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
@@ -66,8 +79,11 @@
 		AB24266E4A86E3CEF527F873 /* ImportExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportExportService.swift; sourceTree = "<group>"; };
 		B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnePUXImporter.swift; sourceTree = "<group>"; };
 		B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeDetector.swift; sourceTree = "<group>"; };
+		C49D2616C1BA5AD829C2B958 /* ScreenshotOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotOverlayController.swift; sourceTree = "<group>"; };
 		DB49CE912E26F0A2B975ACDC /* PasswordListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordListViewModel.swift; sourceTree = "<group>"; };
+		DCDAE4B11961B57C1140C812 /* ScreenshotLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotLogger.swift; sourceTree = "<group>"; };
 		E124923AAE775D7998C228E0 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		E500CC06D5E60BD9076BE49A /* ScreenshotCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotCaptureService.swift; sourceTree = "<group>"; };
 		E725D4B8CF3B9F5046B54AC6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F4EA728F848D9B1182FDEF44 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		F5C80DA4A9B73E5ECBA486B8 /* ItemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemDetailView.swift; sourceTree = "<group>"; };
@@ -97,6 +113,7 @@
 		583856F065B2B7FC238B1B79 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */,
 				07E3E8B4A645B9E20FA3691B /* ItemCategory.swift */,
 				FC2082239993EDD1FE61F7AD /* NoteItem.swift */,
 				175266EEA35799F72532C4C0 /* PasswordItem.swift */,
@@ -121,6 +138,17 @@
 			path = OneOfPassword;
 			sourceTree = "<group>";
 		};
+		742BA3E133630E85459B05BD /* Screenshot */ = {
+			isa = PBXGroup;
+			children = (
+				17FA99878F35C2B84C0BFD52 /* AnnotationToolbar.swift */,
+				C49D2616C1BA5AD829C2B958 /* ScreenshotOverlayController.swift */,
+				8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */,
+				41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */,
+			);
+			path = Screenshot;
+			sourceTree = "<group>";
+		};
 		90BBB4DAFADC405EC516AB49 /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -132,6 +160,9 @@
 				67042E821D4BE20D5B2B2B86 /* KeychainService.swift */,
 				B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */,
 				B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */,
+				E500CC06D5E60BD9076BE49A /* ScreenshotCaptureService.swift */,
+				6648FC35AD9C5E262553D882 /* ScreenshotHotkeyManager.swift */,
+				DCDAE4B11961B57C1140C812 /* ScreenshotLogger.swift */,
 				6E48AE343AE0298673717DCA /* TOTPGenerator.swift */,
 			);
 			path = Services;
@@ -167,6 +198,7 @@
 				A399421E1B680DA362242BB3 /* SettingsView.swift */,
 				5D59BDA04AFCA786840307C8 /* VaultPreviewViews.swift */,
 				F189B22AA14172403AF1DF2A /* Components */,
+				742BA3E133630E85459B05BD /* Screenshot */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -252,6 +284,8 @@
 			files = (
 				9F077A58889554046437E351 /* AccountListView.swift in Sources */,
 				865A6F614123D1EAC382B6DE /* AccountListViewModel.swift in Sources */,
+				63E4F631A2C6A981E6A1FE55 /* AnnotationModel.swift in Sources */,
+				127709CE7D2F7BC3BF928338 /* AnnotationToolbar.swift in Sources */,
 				45D1A20855B7ECB120549970 /* AppDelegate.swift in Sources */,
 				385A953B7937C2BA08222C6A /* AuthPolicy.swift in Sources */,
 				574EDF779AC0FCF6533DA894 /* ClipboardManager.swift in Sources */,
@@ -276,6 +310,12 @@
 				DD9ADAC4369B9C627BF0C93C /* PasswordListViewModel.swift in Sources */,
 				3F1D43508133611FC47F759C /* QRCodeDetector.swift in Sources */,
 				69B1A83AF1D052E3AA07388C /* QRScannerView.swift in Sources */,
+				7147ADB3A359569AF92E24BC /* ScreenshotCaptureService.swift in Sources */,
+				95A44122F094E2C381B9038F /* ScreenshotHotkeyManager.swift in Sources */,
+				EEF7BD2EB66820594F97004F /* ScreenshotLogger.swift in Sources */,
+				9FCFC11A1371E0C79F82FDDA /* ScreenshotOverlayController.swift in Sources */,
+				58607B100344D6A086C31127 /* ScreenshotOverlayView.swift in Sources */,
+				E99AC374D63C20E483966DA3 /* ScreenshotSettingsView.swift in Sources */,
 				BBF38DC4A6171AB026986EAE /* SettingsView.swift in Sources */,
 				FE5E3BF998AE4AD83CF7B396 /* TOTPGenerator.swift in Sources */,
 				C33DE6BDF8A2C6872A1063F7 /* VaultPreviewViews.swift in Sources */,
