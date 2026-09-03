@@ -82,7 +82,7 @@ xcodebuild \
   MARKETING_VERSION="$VERSION" \
   ARCHS="arm64 x86_64" \
   ONLY_ACTIVE_ARCH=NO \
-  2>&1 | tee "$BUILD_LOG" | grep -E "error:|Build succeeded|Build FAILED" || true
+  2>&1 | tee "$BUILD_LOG" | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED" || true
 
 [ -d "$APP_PATH" ] || error "编译失败，详情见 $BUILD_LOG"
 

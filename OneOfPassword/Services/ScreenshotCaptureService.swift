@@ -46,18 +46,16 @@ enum ScreenshotCaptureService {
         return cgImage
     }
 
-    /// 从全屏快照裁剪指定区域。rect 为视图坐标（左下原点），快照为左上原点。
+    /// 从全屏快照裁剪指定区域。rect 为视图坐标（左上原点），快照为左上原点像素，直接按 scale 换算。
     static func crop(from snapshot: CGImage, rect: CGRect) -> CGImage? {
         guard let screen = NSScreen.main else { return nil }
         let scale = screen.backingScaleFactor
-        // 视图坐标（左下原点）→ 图片像素坐标（左上原点）
-        let imgH = CGFloat(snapshot.height)
         let pxX = rect.minX * scale
-        let pxY = (CGFloat(screen.frame.height) - rect.maxY) * scale
+        let pxY = rect.minY * scale
         let pxW = rect.width * scale
         let pxH = rect.height * scale
-        let cropRect = CGRect(x: pxX, y: imgH - pxY - pxH, width: pxW, height: pxH)
-        ScreenshotLogger.log("crop() rect=\(rect) scale=\(scale) cropRect=\(cropRect) imgH=\(imgH)")
+        let cropRect = CGRect(x: pxX, y: pxY, width: pxW, height: pxH)
+        ScreenshotLogger.log("crop() rect=\(rect) scale=\(scale) cropRect=\(cropRect)")
         guard let cropped = snapshot.cropping(to: cropRect) else {
             ScreenshotLogger.log("crop() cropping failed")
             return nil
@@ -85,8 +83,8 @@ enum ScreenshotCaptureService {
 
     // MARK: - 标注合成
 
-    /// 将标注叠加到底图上。shapes 的 points 为相对底图左上原点的坐标。
-    /// 用 NSGraphicsContext（左上原点）合成，方向直观，避免 CGContext 坐标系陷阱。
+    /// 将标注叠加到底图上。shapes 的 points 为相对底图【左下原点、像素】坐标（已由调用方完成
+    /// 视图左上→底图左下、点→像素的转换）。底图经 NSImage.draw 正立绘制，标注按左下原点直接绘制，方向一致。
     static func composite(base: CGImage, shapes: [AnnotationShape]) -> CGImage? {
         let width = base.width
         let height = base.height
@@ -109,7 +107,7 @@ enum ScreenshotCaptureService {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         defer { NSGraphicsContext.restoreGraphicsState() }
 
-        // NSGraphicsContext 默认左下原点；设为左上原点，使 base 和标注方向一致、直观
+        // cgContext 默认左下原点；底图用 NSImage.draw 正立绘制，标注按左下原点直接绘制，方向一致。
         NSGraphicsContext.current?.cgContext.textMatrix = .identity
 
         // 画底图（CGImage 在 NSGraphicsContext 里用 draw(in:) 正立绘制）
@@ -133,7 +131,7 @@ enum ScreenshotCaptureService {
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
 
-        // points 是 view 左下原点坐标，NSGraphicsContext 默认也是左下原点，无需翻转
+        // points 已是底图左下原点像素坐标，NSGraphicsContext 亦为左下原点，无需翻转
         switch shape.tool {
         case .rectangle:
             let r = CGRect(from: first, to: shape.points.last ?? first)

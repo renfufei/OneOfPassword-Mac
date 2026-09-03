@@ -156,11 +156,20 @@ final class ScreenshotOverlayController {
             dismiss()
             return
         }
-        // 标注 points 是全屏全局坐标（左下原点），合成前平移到底图局部坐标：减去选区 origin
+        // 标注 points 为全屏视图坐标（左上原点、点单位）。合成前转到底图像素坐标（左下原点）：
+        // 1) 减选区 origin → 选区局部左上坐标（点）
+        // 2) 乘 backingScaleFactor → 像素坐标（点）
+        // 3) y 翻转（视图左上 → CG 底图左下）
+        let scale = CGFloat(NSScreen.main?.backingScaleFactor ?? 1)
+        let baseH = CGFloat(base.height)
         let localShapes = shapes.map { s -> AnnotationShape in
             var n = s
-            n.points = s.points.map { CGPoint(x: $0.x - selectionRect.origin.x,
-                                               y: $0.y - selectionRect.origin.y) }
+            n.points = s.points.map { p in
+                let lx = p.x - selectionRect.origin.x
+                let ly = p.y - selectionRect.origin.y
+                return CGPoint(x: lx * scale, y: baseH - ly * scale)
+            }
+            n.lineWidth = s.lineWidth * scale
             return n
         }
         guard let out = ScreenshotCaptureService.composite(base: base, shapes: localShapes) else {

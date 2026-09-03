@@ -111,12 +111,12 @@ struct ScreenshotOverlayView: View {
 
     private func overlayMask(size: CGSize) -> some View {
         Canvas { ctx, _ in
-            let r = state.selectionRect
-            // 全屏蒙版
-            ctx.fill(Path(CGRect(origin: .zero, size: size)),
-                     with: .color(.black.opacity(0.45)))
-            // 选区内挖空（透明）
-            ctx.fill(Path(r), with: .color(.clear))
+            // even-odd 填充：外框全屏蒙版 + 内框选区 → 选区区域被挖空为透明，露出下方快照
+            var path = Path(CGRect(origin: .zero, size: size))
+            path.addRect(state.selectionRect)
+            ctx.fill(path,
+                     with: .color(.black.opacity(0.45)),
+                     style: FillStyle(eoFill: true))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
@@ -341,6 +341,7 @@ struct ScreenshotOverlayView: View {
                     .onTapGesture { loc in
                         // 若正在编辑且已有内容，先结束当前编辑
                         if state.editingTextIndex != nil { return }
+                        // 手势坐标即全屏全局坐标（左上原点），直接采用
                         var s = AnnotationShape(
                             tool: .text,
                             points: [loc],
@@ -358,6 +359,9 @@ struct ScreenshotOverlayView: View {
     private var annotationGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                // 手势坐标即全屏 GeometryReader 全局坐标（左上原点、点单位），
+                // 与全屏预览 Canvas / 保存转换（captureAndSave 内做 减 origin→缩放→翻转）同一坐标空间，
+                // 直接采用即可，无需再叠加选区 origin（否则会偏离光标整整一个选区原点）。
                 let start = value.startLocation
                 let current = value.location
                 if state.drawingShape == nil {

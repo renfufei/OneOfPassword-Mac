@@ -2,12 +2,18 @@
 //  ScreenshotHotkeyManager.swift
 //  OneOfPassword
 //
-//  全局快捷键（CGEventTap）管理：监听 F1-F12，触发截屏。
+//  全局快捷键管理：基于 Carbon HIToolbox 的 RegisterEventHotKey 注册系统级热键。
+//
+//  为什么用 RegisterEventHotKey 而不是 CGEventTap：
+//  CGEventTap 监听系统级按键属于"事件拦截/监听"，macOS 强制要求「辅助功能」权限，
+// 且授权后常因 tap 在授权前已创建/被系统禁用而静默失效。
+//  RegisterEventHotKey 只是向窗口服务器注册一个热键组合，仅在按键真正按下时触发自己的
+//  回调，不能观察其他按键、不涉及隐私，因此【无需辅助功能权限】，沙盒内也可用。
+//  （钉钉等应用的全局截屏快捷键即采用此机制。）
 //
 
 import AppKit
-import ApplicationServices
-import CoreGraphics
+import Carbon
 
 extension Notification.Name {
     static let screenshotTriggered = Notification.Name("screenshotTriggered")
@@ -15,6 +21,9 @@ extension Notification.Name {
 
 final class ScreenshotHotkeyManager: ObservableObject {
     static let shared = ScreenshotHotkeyManager()
+
+    /// 热键签名（4 字符 'OOPk'），用于区分本应用注册的热键。
+    private static let hotKeySignature: OSType = 0x4F4F506B
 
     private enum Keys {
         static let enabled = "screenshotHotkeyEnabled"
@@ -27,22 +36,20 @@ final class ScreenshotHotkeyManager: ObservableObject {
     @Published var keyCode: Int {
         didSet { UserDefaults.standard.set(keyCode, forKey: Keys.keyCode); refresh() }
     }
-    @Published var hasAccessibility: Bool = false
 
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    // Carbon 热键引用
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandler: EventHandlerRef?
 
     private init() {
         enabled = UserDefaults.standard.object(forKey: Keys.enabled) as? Bool ?? true
         keyCode = UserDefaults.standard.object(forKey: Keys.keyCode) as? Int ?? 122 // F1
     }
 
-    // MARK: - Lifecycle
+    // MARK: - Lifecycle（保持与 AppDelegate 的接线不变）
 
     func start() {
         ScreenshotLogger.log("start() called")
-        ScreenshotLogger.log("start() screen capture preflight = \(CGPreflightScreenCaptureAccess())")
-        refreshAccessibility()
         refresh()
     }
 
@@ -51,124 +58,87 @@ final class ScreenshotHotkeyManager: ObservableObject {
         unregister()
     }
 
-    private func refresh() {
-        ScreenshotLogger.log("refresh() enabled=\(enabled) hasAccessibility=\(hasAccessibility)")
+    /// 开关切换 / 按键变更 / 应用重新激活时调用：重注册热键。
+    func refresh() {
+        ScreenshotLogger.log("refresh() enabled=\(enabled) keyCode=\(keyCode)")
         unregister()
-        guard enabled, hasAccessibility else {
-            ScreenshotLogger.log("refresh() skipped (enabled or accessibility false)")
+        guard enabled else {
+            ScreenshotLogger.log("refresh() skipped: disabled")
             return
         }
         register()
     }
 
-    // MARK: - Accessibility
-
-    func refreshAccessibility() {
-        hasAccessibility = AXIsProcessTrusted()
-        ScreenshotLogger.log("refreshAccessibility() hasAccessibility=\(hasAccessibility)")
-    }
-
-    /// 检查授权状态；若刚授权则重新注册 event tap。
-    /// 授权后系统不会主动通知进程，需在窗口重新激活 / 手动触发时重新检查。
-    func requestAccessibility(prompt: Bool) {
-        ScreenshotLogger.log("requestAccessibility(prompt:\(prompt)) before hasAccessibility=\(hasAccessibility)")
-        if prompt {
-            let opts: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true]
-            hasAccessibility = AXIsProcessTrustedWithOptions(opts)
-        } else {
-            hasAccessibility = AXIsProcessTrusted()
-        }
-        ScreenshotLogger.log("requestAccessibility() after hasAccessibility=\(hasAccessibility)")
+    /// 应用窗口重新激活时调用（保持接口；RegisterEventHotKey 无需重检查授权）。
+    func recheckOnActivation() {
+        ScreenshotLogger.log("recheckOnActivation() — RegisterEventHotKey 无需辅助功能权限")
         refresh()
     }
 
-    /// 应用窗口重新激活时调用，重新检查授权并重建 tap。
-    func recheckOnActivation() {
-        let now = AXIsProcessTrusted()
-        ScreenshotLogger.log("recheckOnActivation() now=\(now) cached=\(hasAccessibility)")
-        if now != hasAccessibility {
-            hasAccessibility = now
-            refresh()
-        }
-    }
-
-    /// 打开系统设置 > 隐私与安全 > 辅助功能。
-    func openAccessibilitySettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        NSWorkspace.shared.open(url ?? URL(fileURLWithPath: "/"))
-    }
-
-    // MARK: - CGEventTap 注册
+    // MARK: - 注册 RegisterEventHotKey
 
     private func register() {
-        ScreenshotLogger.log("register() called")
-        let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        ScreenshotLogger.log("register() called keyCode=\(keyCode)")
+        let code = UInt32(keyCode)
+        let id = EventHotKeyID(signature: ScreenshotHotkeyManager.hotKeySignature, id: 1)
 
-        // CGEventTap 回调是 C 函数指针，无法捕获 self；用单例桥接。
-        let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: { _, type, event, _ in
-                return ScreenshotHotkeyManager.shared.handle(eventType: type, event: event)
-            },
-            userInfo: nil
+        let status = RegisterEventHotKey(
+            code,
+            0,                 // 无修饰键（纯 F 键）
+            id,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
         )
-        guard let tap else {
-            ScreenshotLogger.log("register() FAILED: CGEvent.tapCreate returned nil (check Accessibility / TCC)")
+        guard status == noErr, hotKeyRef != nil else {
+            ScreenshotLogger.log("register() FAILED: RegisterEventHotKey status=\(status)")
             return
         }
-        eventTap = tap
-
-        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        runLoopSource = src
-        if let src { CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode) }
-        CGEvent.tapEnable(tap: tap, enable: true)
-        ScreenshotLogger.log("register() OK: event tap created and enabled")
+        ScreenshotLogger.log("register() OK: hotkey registered for keyCode=\(code)")
+        installEventHandler()
     }
 
-    private func unregister() {
-        ScreenshotLogger.log("unregister() called tap=\(eventTap != nil)")
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let src = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .defaultMode)
-        }
-        runLoopSource = nil
-        eventTap = nil
-    }
-
-    private func handle(eventType: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // 事件 tap 被系统禁用（如锁屏）时重新启用
-        if eventType == .tapDisabledByTimeout || eventType == .tapDisabledByUserInput {
-            ScreenshotLogger.log("handle() tap disabled by \(eventType) — re-enabling")
-            if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return Unmanaged.passRetained(event)
-        }
-        guard eventType == .keyDown else { return Unmanaged.passRetained(event) }
-        let code = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        // 仅响应无修饰键（纯 F 键）；cmd/ctrl/option/shift 不拦截，避免影响系统
-        let noMods = flags.isEmpty
-        // 回调在非主线程，读 keyCode 快照避免竞态
-        let targetCode = keyCode
-        if Int(code) == targetCode && noMods {
-            ScreenshotLogger.log("handle() matched keyCode=\(code) — posting .screenshotTriggered")
+    private func installEventHandler() {
+        guard eventHandler == nil else { return }
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        // 只注册了一个热键、且只监听 kEventHotKeyPressed，因此回调命中即本热键。
+        let upp: EventHandlerUPP = { _, _, _ -> OSStatus in
+            ScreenshotLogger.log("hotkey pressed — posting .screenshotTriggered")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .screenshotTriggered, object: nil)
             }
-            return nil // 吞掉按键，避免系统 F1 帮助
+            return noErr
         }
-        return Unmanaged.passRetained(event)
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            upp,
+            1,
+            &eventType,
+            nil,
+            &eventHandler
+        )
+        if status != noErr {
+            ScreenshotLogger.log("installEventHandler() FAILED status=\(status)")
+        }
     }
-}
 
-// MARK: - F 键 key code 映射
+    private func unregister() {
+        ScreenshotLogger.log("unregister() called hotKeyRef=\(hotKeyRef != nil)")
+        if let ref = hotKeyRef {
+            UnregisterEventHotKey(ref)
+            hotKeyRef = nil
+        }
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+            eventHandler = nil
+        }
+    }
 
-extension ScreenshotHotkeyManager {
-    /// F1 ~ F12 的按键码与显示名。
+    // MARK: - F 键 key code 映射
+
     static let fKeys: [(code: Int, name: String)] = [
         (122, "F1"),  (120, "F2"),  (99,  "F3"),  (118, "F4"),
         (96,  "F5"),  (97,  "F6"),  (98,  "F7"),  (100, "F8"),

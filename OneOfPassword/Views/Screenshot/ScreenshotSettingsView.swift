@@ -68,6 +68,11 @@ struct ScreenshotSettingsView: View {
 
                 Divider()
 
+                Text("全局快捷键通过系统级热键注册（RegisterEventHotKey），无需「辅助功能」权限；钉钉等应用也采用此机制。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+
                 toggleRow(label: "启用全局快捷键", isOn: $hk.enabled)
 
                 Divider()
