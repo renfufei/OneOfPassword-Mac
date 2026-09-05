@@ -14,6 +14,7 @@ struct ScreenshotSettingsView: View {
     @AppStorage("screenshotAutoHide") private var autoHide = true
     @State private var logText: String = ""
     @State private var hasScreenCapture: Bool = false
+    @State private var logExpanded: Bool = false
 
     var body: some View {
         ScrollView {
@@ -191,11 +192,8 @@ struct ScreenshotSettingsView: View {
 
     private var logSection: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("诊断日志", systemImage: "doc.text.magnifyingglass")
-                        .font(.headline)
-                    Spacer()
+            DisclosureGroup(isExpanded: $logExpanded) {
+                HStack(spacing: 8) {
                     Button { reloadLog() } label: {
                         Label("刷新", systemImage: "arrow.clockwise")
                     }
@@ -205,6 +203,7 @@ struct ScreenshotSettingsView: View {
                     }
                     .buttonStyle(.secondary())
                 }
+                .padding(.bottom, 4)
 
                 Text(logText.isEmpty ? "(暂无日志)" : logText)
                     .font(.system(size: 11, design: .monospaced))
@@ -214,6 +213,9 @@ struct ScreenshotSettingsView: View {
                     .background(Color.gray.opacity(0.08))
                     .cornerRadius(6)
                     .textSelection(.enabled)
+            } label: {
+                Label("诊断日志", systemImage: "doc.text.magnifyingglass")
+                    .font(.headline)
             }
             .padding(8)
         }

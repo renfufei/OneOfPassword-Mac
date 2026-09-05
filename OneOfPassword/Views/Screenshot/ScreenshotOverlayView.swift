@@ -16,6 +16,8 @@ struct ScreenshotOverlayView: View {
     var snapshot: CGImage
     var onDismiss: () -> Void
     var onCapture: (CGRect, [AnnotationShape], Bool) -> Void
+    /// 自动识别的鼠标所在窗口（开启 autoWindow 时由 controller 传入，左上原点）。
+    var preferredRect: CGRect? = nil
 
     @StateObject private var state = OverlayState()
     @State private var keyMonitor: Any?
@@ -97,14 +99,23 @@ struct ScreenshotOverlayView: View {
 
     private func initSelection() {
         guard let screen = NSScreen.main else { return }
-        // 预选屏幕中央 60% 区域
-        let w = screen.frame.width * 0.6
-        let h = screen.frame.height * 0.6
-        let x = (screen.frame.width - w) / 2
-        let y = (screen.frame.height - h) / 2
+        let screenW = screen.frame.width
+        let screenH = screen.frame.height
+        // 优先级：autoWindow 识别的窗口 > 上次框选 > 默认中央 60%
+        let defaultW = screenW * 0.6
+        let defaultH = screenH * 0.6
+        let defaultRect = CGRect(x: (screenW - defaultW) / 2,
+                                 y: (screenH - defaultH) / 2,
+                                 width: defaultW, height: defaultH)
+        let raw = preferredRect ?? ScreenshotCaptureService.loadLastSelection() ?? defaultRect
+        // 钳制到当前主屏范围（跨屏 / 分辨率变化时不致越界）
+        let w = min(max(raw.width, 20), screenW)
+        let h = min(max(raw.height, 20), screenH)
+        let x = min(max(raw.origin.x, 0), screenW - w)
+        let y = min(max(raw.origin.y, 0), screenH - h)
         state.selectionRect = CGRect(x: x, y: y, width: w, height: h)
         state.isRegionConfirmed = true
-        ScreenshotLogger.log("overlay initSelection rect=\(state.selectionRect)")
+        ScreenshotLogger.log("overlay initSelection source=\(preferredRect != nil ? "window" : (raw != defaultRect ? "last" : "default")) rect=\(state.selectionRect)")
     }
 
     // MARK: - 蒙版（选区外半透明）

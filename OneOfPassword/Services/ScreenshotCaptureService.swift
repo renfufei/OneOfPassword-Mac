@@ -81,6 +81,25 @@ enum ScreenshotCaptureService {
         NSWorkspace.shared.open(url ?? URL(fileURLWithPath: "/"))
     }
 
+    // MARK: - 上次选区记忆
+
+    private static let lastSelectionKey = "screenshotLastSelectionRect"
+
+    /// 记住上次截屏使用的框选区域（全屏视图坐标，左上原点、点单位），
+    /// 下次进入截屏时自动定位到相同位置。
+    static func saveLastSelection(_ rect: CGRect) {
+        let arr: [CGFloat] = [rect.origin.x, rect.origin.y, rect.width, rect.height]
+        UserDefaults.standard.set(arr, forKey: lastSelectionKey)
+        ScreenshotLogger.log("saveLastSelection \(rect)")
+    }
+
+    /// 读取上次框选区域；无记录或格式异常返回 nil。
+    static func loadLastSelection() -> CGRect? {
+        guard let arr = UserDefaults.standard.array(forKey: lastSelectionKey) as? [CGFloat],
+              arr.count == 4, arr[2] > 1, arr[3] > 1 else { return nil }
+        return CGRect(x: arr[0], y: arr[1], width: arr[2], height: arr[3])
+    }
+
     // MARK: - 标注合成
 
     /// 将标注叠加到底图上。shapes 的 points 为相对底图【左下原点、像素】坐标（已由调用方完成
@@ -206,46 +225,56 @@ enum ScreenshotCaptureService {
         }
     }
 
-    // MARK: - 前台窗口识别
+    // MARK: - 鼠标所在窗口识别（类似钉钉自动选窗口）
 
-    /// 返回鼠标所在最上层普通窗口的屏幕全局 rect（左上原点坐标）。
-    static func windowAt(_ point: CGPoint) -> CGRect? {
-        guard let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+    /// 识别鼠标当前所在的最上层普通窗口，返回其在主屏 overlay 视图坐标系（左上原点、点单位）下的 rect。
+    /// 用于「自动识别鼠标所在窗口」预选选区。未找到合适窗口返回 nil。
+    /// 注意：必须在隐藏本应用窗口之前调用（否则鼠标若恰在本应用窗口上，顶层会变化）。
+    static func windowAtMouse() -> CGRect? {
+        guard let ev = CGEvent(source: nil) else { return nil }
+        let mouse = ev.location  // CG 全局坐标，左上原点
+        ScreenshotLogger.log("windowAtMouse called, mouse=\(mouse)")
+
+        guard let infos = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else {
             return nil
         }
+        let selfPid = Int(ProcessInfo.processInfo.processIdentifier)
+
         for info in infos {
-            // 跳过自身与无标题窗口
+            // 跳过本应用窗口（CG 字典值是 Int，不能用 pid_t(Int32) 直接 as? 转换）
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int, pid != selfPid else { continue }
+            // 只取默认层级（0）普通窗口，跳过菜单/Dock/浮层等
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
-            guard let bounds = info[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
-            let x = bounds["X"] ?? 0
-            let y = bounds["Y"] ?? 0
-            let w = bounds["Width"] ?? 0
-            let h = bounds["Height"] ?? 0
-            let r = CGRect(x: x, y: y, width: w, height: h)
-            if r.contains(point) {
-                // 把 CG 窗口坐标（左上原点）转为 NSScreen 视图坐标（左下原点）
-                return toScreenViewRect(r)
+            let alpha = info[kCGWindowAlpha as String] as? CGFloat ?? 1
+            guard alpha > 0.01 else { continue }
+            guard let b = info[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
+            let w = b["Width"] ?? 0
+            let h = b["Height"] ?? 0
+            guard w > 10, h > 10 else { continue }
+            let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: w, height: h)
+            if r.contains(mouse) {
+                // CG 窗口坐标是全局左上原点，平移到 NSScreen.main 局部（overlay 视图坐标）。
+                // 用 CGDisplayBounds 拿 main screen 在 CG 坐标系的 origin，多屏也正确。
+                guard let mainScreen = NSScreen.main,
+                      let displayID = mainScreen.deviceDescription[
+                        NSDeviceDescriptionKey("NSScreenNumber")
+                      ] as? CGDirectDisplayID else {
+                    ScreenshotLogger.log("windowAtMouse matched pid=\(pid) layer=\(layer) raw=\(r) (no mainScreen, return raw)")
+                    return r
+                }
+                let screenCG = CGDisplayBounds(displayID)
+                let out = CGRect(x: r.origin.x - screenCG.origin.x,
+                                y: r.origin.y - screenCG.origin.y,
+                                width: r.width,
+                                height: r.height)
+                ScreenshotLogger.log("windowAtMouse matched pid=\(pid) layer=\(layer) raw=\(r) out=\(out)")
+                return out
             }
         }
+        ScreenshotLogger.log("windowAtMouse no match, mouse=\(mouse) count=\(infos.count)")
         return nil
-    }
-
-    /// CG 坐标 rect（左上原点）→ 视图坐标 rect（左下原点，供 overlay 使用）。
-    static func toScreenViewRect(_ cgRect: CGRect) -> CGRect {
-        guard let screen = NSScreen.main else { return cgRect }
-        return CGRect(x: cgRect.origin.x,
-                      y: screen.frame.maxY - cgRect.maxY,
-                      width: cgRect.width,
-                      height: cgRect.height)
-    }
-
-    /// 视图坐标 rect（左下原点）→ CG 截屏坐标 rect（左上原点）。
-    static func toCaptureRect(_ viewRect: CGRect) -> CGRect {
-        guard let screen = NSScreen.main else { return viewRect }
-        return CGRect(x: viewRect.origin.x,
-                      y: screen.frame.maxY - viewRect.maxY,
-                      width: viewRect.width,
-                      height: viewRect.height)
     }
 
     private static func timestamp() -> String {

@@ -18,6 +18,8 @@ final class ScreenshotOverlayController {
     private var snapshot: CGImage?
     /// 截屏前隐藏的应用窗口（恢复时用）
     private var hiddenWindows: [NSWindow] = []
+    /// autoWindow 开启时，在隐藏本应用窗口之前识别出的鼠标所在窗口 rect
+    private var pendingPreferredRect: CGRect?
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -46,6 +48,12 @@ final class ScreenshotOverlayController {
             _ = CGRequestScreenCaptureAccess()
             return
         }
+
+        // 自动识别鼠标所在窗口：必须在隐藏本应用窗口之前取，否则顶层会变
+        let autoWindow = UserDefaults.standard.object(forKey: "screenshotAutoWindow") as? Bool ?? false
+        ScreenshotLogger.log("overlay show() autoWindow=\(autoWindow) (key=screenshotAutoWindow)")
+        pendingPreferredRect = autoWindow ? ScreenshotCaptureService.windowAtMouse() : nil
+        ScreenshotLogger.log("overlay show() pendingPreferredRect=\(String(describing: pendingPreferredRect))")
 
         // 自动隐藏本应用窗口（默认开启），避免快照里截到应用自身
         let autoHide = UserDefaults.standard.object(forKey: "screenshotAutoHide") as? Bool ?? true
@@ -106,7 +114,8 @@ final class ScreenshotOverlayController {
             },
             onCapture: { [weak self] selectionRect, shapes, saveToFile in
                 self?.captureAndSave(selectionRect: selectionRect, shapes: shapes, saveToFile: saveToFile)
-            }
+            },
+            preferredRect: pendingPreferredRect
         ))
         p.contentViewController = host
         p.setFrame(screen.frame, display: true)
@@ -145,6 +154,8 @@ final class ScreenshotOverlayController {
 
     /// 从快照裁剪选区 + 合成标注，不再调截图 API。
     private func captureAndSave(selectionRect: CGRect, shapes: [AnnotationShape], saveToFile: Bool) {
+        // 记住本次框选区域，供下次截屏自动定位
+        ScreenshotCaptureService.saveLastSelection(selectionRect)
         ScreenshotLogger.log("captureAndSave saveToFile=\(saveToFile) rect=\(selectionRect)")
         guard let snap = snapshot else {
             ScreenshotLogger.log("captureAndSave no snapshot")
