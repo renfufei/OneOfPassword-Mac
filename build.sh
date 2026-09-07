@@ -114,13 +114,20 @@ cat > "$DMG_STAGING/安装说明.txt" << 'INSTALL_EOF'
 首次打开提示「无法验证开发者」？
 ────────────────────────────────
 由于应用未经 Apple 公证，macOS 会阻止直接双击打开。
-解决方法（两种任选一种）：
+解决方法（任选一种）：
 
 方法一（推荐）：
   右键点击 OneOfPassword.app → 选择「打开」→ 点击弹窗中的「打开」
 
 方法二（终端）：
   xattr -dr com.apple.quarantine /Applications/OneOfPassword.app
+
+方法三（允许任何来源，需管理员密码）：
+  在终端执行以下命令，开启「任何来源」安装选项：
+    sudo spctl --master-disable
+  执行后，系统「设置 → 隐私与安全性」中会出现「任何来源」选项，可直接双击打开本应用。
+  ⚠️ 该设置对系统全局生效，用完后建议恢复默认安全策略：
+    sudo spctl --master-enable
 
 只需操作一次，之后正常双击即可打开。
 INSTALL_EOF

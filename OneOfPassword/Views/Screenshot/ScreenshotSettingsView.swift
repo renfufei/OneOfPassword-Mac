@@ -169,16 +169,9 @@ struct ScreenshotSettingsView: View {
                     .buttonStyle(.secondary())
                 }
 
-                Text("截图功能依赖「屏幕录制」权限。授权后请点「重新检查」，或重启应用。若状态显示已授权但仍无法触发，请查看下方日志。")
+                Text("截图功能依赖「屏幕录制」权限。在系统设置中开启后需重启应用方可生效；进入本页时会自动刷新授权状态。若状态显示已授权但仍无法截屏，请查看下方日志。")
                     .font(.caption)
                     .foregroundColor(.secondary)
-
-                Button {
-                    refreshScreenCapture()
-                } label: {
-                    Label("重新检查权限", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.secondary())
             }
             .padding(8)
         }
