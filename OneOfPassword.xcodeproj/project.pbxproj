@@ -40,6 +40,7 @@
 		D04A529326991CB7A3CE77B2 /* PasswordItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175266EEA35799F72532C4C0 /* PasswordItem.swift */; };
 		DD23DD7877D83988541AE8DF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60C9348870360445D81F9E3D /* ContentView.swift */; };
 		DD9ADAC4369B9C627BF0C93C /* PasswordListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB49CE912E26F0A2B975ACDC /* PasswordListViewModel.swift */; };
+		E926FA3FE082C25BC89FAFB3 /* MultilineTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA450060C74FDE471586EE3F /* MultilineTextEditor.swift */; };
 		E99AC374D63C20E483966DA3 /* ScreenshotSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */; };
 		EEF7BD2EB66820594F97004F /* ScreenshotLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCDAE4B11961B57C1140C812 /* ScreenshotLogger.swift */; };
 		EFBB6A7534AE5628B711A80B /* EncryptedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB2D9029679A2778BFBFC49 /* EncryptedStore.swift */; };
@@ -76,6 +77,7 @@
 		9F596C65B923B396579BFC8A /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
 		A399421E1B680DA362242BB3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A52E47334DFCBDFF5D7FDDA7 /* NoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditorView.swift; sourceTree = "<group>"; };
+		AA450060C74FDE471586EE3F /* MultilineTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultilineTextEditor.swift; sourceTree = "<group>"; };
 		AB24266E4A86E3CEF527F873 /* ImportExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportExportService.swift; sourceTree = "<group>"; };
 		B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnePUXImporter.swift; sourceTree = "<group>"; };
 		B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeDetector.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				17FA99878F35C2B84C0BFD52 /* AnnotationToolbar.swift */,
+				AA450060C74FDE471586EE3F /* MultilineTextEditor.swift */,
 				C49D2616C1BA5AD829C2B958 /* ScreenshotOverlayController.swift */,
 				8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */,
 				41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */,
@@ -300,6 +303,7 @@
 				5B114E8F9FA6C1563B89B959 /* ItemCategory.swift in Sources */,
 				B35177D494F6F23116B5DC57 /* ItemDetailView.swift in Sources */,
 				137A823114348AD2AE3AF87D /* KeychainService.swift in Sources */,
+				E926FA3FE082C25BC89FAFB3 /* MultilineTextEditor.swift in Sources */,
 				0DA78B5FFDE0AE22B61C9231 /* NoteEditorView.swift in Sources */,
 				A524DE6D6365C8FFBA409077 /* NoteItem.swift in Sources */,
 				FD79BA7F4FFBEC00DF423B4E /* NoteListView.swift in Sources */,

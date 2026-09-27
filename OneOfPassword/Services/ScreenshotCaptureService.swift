@@ -181,16 +181,44 @@ enum ScreenshotCaptureService {
             ctx.strokePath()
         case .text, .selection:
             guard shape.tool == .text, let str = shape.text, !str.isEmpty,
-                  let end = shape.points.first else { return }
+                  let topLeft = shape.points.first else { return }
+            let style = shape.style
+            let textSize = style.textSize(for: str)
+            let boxSize = style.boxSize(for: str)
+            // points 已转成底图【左下原点】像素坐标，而 topLeft 语义上是「文本框左上角」，
+            // 转换后它对应盒子在底图里的**上边**；所以 CG rect 要自 topLeft.y 向下（y 减小）展开。
+            let boxRect = NSRect(x: topLeft.x, y: topLeft.y - boxSize.height,
+                                 width: boxSize.width, height: boxSize.height)
+            let radius = min(style.fontSize * 0.22, 8)
+
+            // 背景（opacity = 0 表示完全透明，不画）
+            // 注意：本函数开头有 `let cgColor = cgColor(shape.color)`，同名局部变量会遮蔽
+            // 静态方法 `cgColor(_:)`，所以这里必须写成 `Self.cgColor(...)`。
+            if style.backgroundOpacity > 0 {
+                let bg = NSColor(cgColor: Self.cgColor(style.backgroundColor)) ?? .black
+                ctx.setFillColor(bg.withAlphaComponent(style.backgroundOpacity).cgColor)
+                ctx.addPath(CGPath(roundedRect: boxRect, cornerWidth: radius,
+                                   cornerHeight: radius, transform: nil))
+                ctx.fillPath()
+            }
+            // 边框（线宽 = 0 表示无边框）
+            if style.borderWidth > 0 {
+                ctx.setStrokeColor(Self.cgColor(style.borderColor))
+                ctx.setLineWidth(style.borderWidth)
+                ctx.addPath(CGPath(roundedRect: boxRect, cornerWidth: radius,
+                                   cornerHeight: radius, transform: nil))
+                ctx.strokePath()
+            }
+
             let attr: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 18, weight: .medium),
+                .font: style.nsFont(),
                 .foregroundColor: NSColor(cgColor: cgColor) ?? .red
             ]
             let attrStr = NSAttributedString(string: str, attributes: attr)
-            let textSize = attrStr.size()
-            // NSGraphicsContext 左下原点：文本基线对齐
-            let textRect = NSRect(origin: NSPoint(x: end.x, y: end.y - textSize.height),
-                                  size: textSize)
+            // 文字左上角 = 盒子左上角 + 内边距；再折算成左下原点的绘制矩形
+            let textRect = NSRect(x: topLeft.x + style.paddingH,
+                                  y: topLeft.y - style.paddingV - textSize.height,
+                                  width: textSize.width, height: textSize.height)
             attrStr.draw(in: textRect)
         }
     }

@@ -10,14 +10,26 @@
 import AppKit
 import SwiftUI
 
+/// 截屏覆盖层专用面板。
+/// 为什么需要子类：无边框 `NSPanel` 在某些情况下不会成为 key window，
+/// 那样即使 SwiftUI 里 `.focused($textFocused) = true` 生效，`TextField` 也拿不到
+/// 第一响应者 —— 表现就是「文本框画出来了，但敲键盘没反应」。
+/// 这里显式放开 canBecomeKey，保证文本标注一定能输入。
+private final class ScreenshotOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 final class ScreenshotOverlayController {
     static let shared = ScreenshotOverlayController()
 
     private var panel: NSPanel?
     /// 覆盖层显示前抓取的全屏快照
     private var snapshot: CGImage?
-    /// 截屏前隐藏的应用窗口（恢复时用）
+    /// 截屏前隐藏的应用窗口（恢复时用），按 Z 轴顺序保存
     private var hiddenWindows: [NSWindow] = []
+    /// 截屏前的前台应用（若非本应用）。覆盖层显示期间本应用会被强制激活，
+    /// 恢复时必须主动把焦点还给这个应用，否则会一直抢着前台。
+    private var previousFrontApp: NSRunningApplication?
     /// autoWindow 开启时，在隐藏本应用窗口之前识别出的鼠标所在窗口 rect
     private var pendingPreferredRect: CGRect?
 
@@ -89,7 +101,7 @@ final class ScreenshotOverlayController {
             return
         }
         ScreenshotLogger.log("overlay show() creating panel on screen \(screen.frame)")
-        let p = NSPanel(
+        let p = ScreenshotOverlayPanel(
             contentRect: screen.frame,
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
@@ -136,6 +148,11 @@ final class ScreenshotOverlayController {
 
     private func hideAppWindows() {
         ScreenshotLogger.log("hideAppWindows()")
+        // 记录当前桌面的前台应用：若不由本应用占据，恢复时需把焦点还给它
+        let front = NSWorkspace.shared.frontmostApplication
+        let isSelf = front?.bundleIdentifier == Bundle.main.bundleIdentifier
+        previousFrontApp = isSelf ? nil : front
+        ScreenshotLogger.log("hideAppWindows() frontmost=\(front?.localizedName ?? "nil") isSelf=\(isSelf) 需归还焦点=\(previousFrontApp != nil)")
         hiddenWindows = []
         for window in NSApp.windows where window.isVisible && !(window is NSPanel) {
             hiddenWindows.append(window)
@@ -144,12 +161,22 @@ final class ScreenshotOverlayController {
     }
 
     private func restoreAppWindows() {
-        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count)")
+        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count) prevApp=\(previousFrontApp?.localizedName ?? "nil")")
         for window in hiddenWindows {
-            window.orderFront(nil)
+            // 仅恢复可见性，不打乱窗口 Z 轴顺序
+            window.setIsVisible(true)
         }
         hiddenWindows = []
-        NSApp.activate(ignoringOtherApps: true)
+        // 覆盖层显示期间本应用被 activate 成前台；若截屏前焦点在别的应用，
+        // 必须主动把那个应用重新激活，否则本应用会一直赖在最前面。
+        if let prev = previousFrontApp, !prev.isTerminated {
+            let ok = prev.activate()
+            ScreenshotLogger.log("restoreAppWindows() 归还焦点给 \(prev.localizedName ?? "?") ok=\(ok)")
+        } else {
+            NSApp.activate(ignoringOtherApps: false)
+            ScreenshotLogger.log("restoreAppWindows() 保持本应用前台")
+        }
+        previousFrontApp = nil
     }
 
     /// 从快照裁剪选区 + 合成标注，不再调截图 API。
@@ -181,6 +208,11 @@ final class ScreenshotOverlayController {
                 return CGPoint(x: lx * scale, y: baseH - ly * scale)
             }
             n.lineWidth = s.lineWidth * scale
+            // 文本样式里的字号 / 边框线宽同样是「点」单位，必须一起缩放，
+            // 否则 Retina 下保存出来的文字仍是 18pt、而底图已放大 2 倍，字会明显偏小。
+            // 内边距由 paddingH/paddingV 按 fontSize 等比推出，会自动跟着一起放大。
+            n.style.fontSize = s.style.fontSize * scale
+            n.style.borderWidth = s.style.borderWidth * scale
             return n
         }
         guard let out = ScreenshotCaptureService.composite(base: base, shapes: localShapes) else {
@@ -188,19 +220,30 @@ final class ScreenshotOverlayController {
             dismiss()
             return
         }
-        dismiss()
+        // 先只关 panel，把「恢复主窗口 + 归还焦点」放到最后：
+        // 保存对话框期间主窗口保持隐藏，避免还在选保存位置时界面就跳回最前；
+        // 复制到剪贴板则立刻恢复。
+        closePanel()
         if saveToFile {
             ScreenshotCaptureService.savePanel(image: out)
         } else {
             ScreenshotCaptureService.copyToPasteboard(image: out)
         }
+        restoreAppWindows()
+    }
+
+    /// 仅关闭覆盖层 panel，不恢复主窗口。
+    /// 保存流程会先把 panel 关掉、弹出保存对话框，等用户选完再 restoreAppWindows，
+    /// 避免「刚弹出保存框，主窗口就先跳回最前」。
+    private func closePanel() {
+        panel?.orderOut(nil)
+        panel = nil
+        snapshot = nil
     }
 
     func dismiss() {
         ScreenshotLogger.log("overlay dismiss() called, panel exists=\(panel != nil)")
-        panel?.orderOut(nil)
-        panel = nil
-        snapshot = nil
+        closePanel()
         restoreAppWindows()
     }
 }

@@ -297,7 +297,11 @@ struct ContentView: View {
 }
 
 #if DEBUG
-#Preview {
-    ContentView()
+/// 用传统 PreviewProvider 代替 #Preview 宏：
+/// Xcode 26 的 swift-plugin-server 宏展开在本地环境不稳定（malformed response），会阻塞构建。
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
 #endif
