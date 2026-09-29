@@ -17,6 +17,9 @@ struct SettingsView: View {
     var onNavigateToVault: (() -> Void)? = nil
     /// 从系统菜单触发的操作（由 ContentView 注入）
     var pendingAction: Binding<ContentView.SettingsAction?>? = nil
+    /// 「设置 → 系统权限」深链令牌：值变化时把权限区块滚进视野并高亮一下。
+    /// 权限是应用级能力、消费者不止截屏一个，所以主体放在这里；别处只留指路条。
+    var permissionFocusToken: Int = 0
 
     @ObservedObject private var dataStore = DataStore.shared
     @ObservedObject private var authPolicy = AuthPolicy.shared
@@ -35,18 +38,37 @@ struct SettingsView: View {
     @State private var alertMessage = ""
     @State private var showAlert    = false
 
+    /// 深链过来时的高亮（1.8s 后自动熄灭）
+    @State private var highlightPermissions = false
+
+    /// 权限区块的滚动锚点 id
+    private static let permissionAnchor = "settings.permissions"
+
     private let service       = ImportExportService.shared
     private let onePUXService = OnePUXImporter.shared
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                importExportSection
-                dataInfoSection
-                authSection
-                storageSection
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    importExportSection
+                    dataInfoSection
+                    permissionSection
+                    authSection
+                    storageSection
+                }
+                .padding(28)
             }
-            .padding(28)
+            // 深链：从截屏页 / 扫码页点「在设置中管理」跳过来时，把权限区块滚到视野中间并闪一下
+            .onChange(of: permissionFocusToken) { _ in
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(Self.permissionAnchor, anchor: .center)
+                }
+                highlightPermissions = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                    highlightPermissions = false
+                }
+            }
         }
         .navigationTitle("设置")
         .frame(minWidth: 520)
@@ -191,6 +213,17 @@ struct SettingsView: View {
         .cornerRadius(8)
     }
 
+    // MARK: - 系统权限区块
+
+    /// 应用级权限的统一管理处。
+    /// 放在「设置」而不是「截屏」页，理由：屏幕录制是**应用级**能力（TCC 每个 App 一条记录），
+    /// 消费者有截屏标注和验证码截取屏幕两个；摄像头则只服务验证码。把它们收在一处，
+    /// 状态口径只有一个，用户在任何一个功能里遇到权限问题也知道该去哪。
+    private var permissionSection: some View {
+        PermissionCenterSection(highlighted: highlightPermissions)
+            .id(Self.permissionAnchor)
+    }
+
     // MARK: - 安全验证区块
 
     private var authSection: some View {
@@ -201,17 +234,26 @@ struct SettingsView: View {
                     .padding(.bottom, 10)
 
                 Divider()
-                authToggleRow(label: "导出备份",    isOn: $authPolicy.requireAuthForExport)
+                authToggleRow(label: "导出备份",    isOn: $authPolicy.requireAuthForExport,
+                              help: "导出含明文密码的备份文件前，需要验证操作系统密码")
                 Divider()
-                authToggleRow(label: "打开存储位置", isOn: $authPolicy.requireAuthForFinder)
+                authToggleRow(label: "打开保险库",  isOn: $authPolicy.requireAuthForVault,
+                              help: "进入「保险库」查看密码与验证器之前，需要验证操作系统密码；每次启动应用只需验证一次。默认关闭")
                 Divider()
-                authToggleRow(label: "删除条目",    isOn: $authPolicy.requireAuthForDelete)
+                authToggleRow(label: "打开存储位置", isOn: $authPolicy.requireAuthForFinder,
+                              help: "在访达中打开应用数据目录前，需要验证操作系统密码")
+                Divider()
+                authToggleRow(label: "删除条目",    isOn: $authPolicy.requireAuthForDelete,
+                              help: "删除密码 / 验证器条目时，需要验证操作系统密码")
             }
             .padding(8)
         }
     }
 
-    private func authToggleRow(label: String, isOn: Binding<Bool>) -> some View {
+    /// 一行策略开关。`help` 是悬停说明：这几个开关的差别只在「在哪个动作上验证」，
+    /// 光看标签容易配错，补一句说明降低误配概率。
+    private func authToggleRow(label: String, isOn: Binding<Bool>,
+                               help: String? = nil) -> some View {
         HStack {
             Text(label)
                 .font(.subheadline)
@@ -234,6 +276,7 @@ struct SettingsView: View {
             .toggleStyle(.switch)
         }
         .padding(.vertical, 6)
+        .help(help ?? label)
     }
 
     // MARK: - 存储路径区块

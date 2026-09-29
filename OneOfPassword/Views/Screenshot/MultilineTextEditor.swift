@@ -91,11 +91,19 @@ struct MultilineTextEditor: NSViewRepresentable {
         }
     }
 
+    /// 只在**值真的变了**时才写回字体/颜色。
+    /// `updateNSView` 每次重绘都会被调用（本视图因为「内容变宽」几乎每个按键都会重绘），
+    /// 无脑重设 `font` / `textColor` 会扰动输入法的组字状态和选中区。
     private func applyStyle(to tv: NSTextView) {
-        tv.font = style.nsFont()
         let ns = NSColor(textColor)
-        tv.textColor = ns
-        tv.insertionPointColor = ns
+        if tv.textColor != ns {
+            tv.textColor = ns
+            tv.insertionPointColor = ns
+        }
+        let f = style.nsFont()
+        if tv.font != f {
+            tv.font = f
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

@@ -13,7 +13,6 @@ struct ScreenshotSettingsView: View {
     @AppStorage("screenshotAutoWindow") private var autoWindow = false
     @AppStorage("screenshotAutoHide") private var autoHide = true
     @State private var logText: String = ""
-    @State private var hasScreenCapture: Bool = false
     @State private var logExpanded: Bool = false
 
     var body: some View {
@@ -30,7 +29,6 @@ struct ScreenshotSettingsView: View {
         .frame(minWidth: 520)
         .onAppear {
             hk.recheckOnActivation()
-            refreshScreenCapture()
             reloadLog()
         }
     }
@@ -140,45 +138,13 @@ struct ScreenshotSettingsView: View {
     }
 
     // MARK: - 权限
+    //
+    // 只留「状态 + 指路」的紧凑条，完整的授权管理（授权 / 打开系统设置 / 重新检测）
+    // 统一在「设置 → 系统权限」—— 屏幕录制是应用级权限，截屏只是它的两个消费者之一
+    // （另一个是验证码的「截取屏幕」），管理入口放两处必然出现两份文案、两套判断。
 
     private var permissionSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("录屏权限", systemImage: "lock.shield.fill")
-                    .font(.headline)
-
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(hasScreenCapture ? .green : .orange)
-                        .frame(width: 10, height: 10)
-                    Text(hasScreenCapture ? "已授权" : "未授权")
-                        .font(.subheadline)
-                    Spacer()
-                    Button {
-                        ScreenshotCaptureService.requestScreenCaptureAccess()
-                        refreshScreenCapture()
-                    } label: {
-                        Label("授权", systemImage: "checkmark.shield")
-                    }
-                    .buttonStyle(.secondary())
-                    Button {
-                        ScreenshotCaptureService.openScreenCaptureSettings()
-                    } label: {
-                        Label("打开系统设置", systemImage: "gearshape")
-                    }
-                    .buttonStyle(.secondary())
-                }
-
-                Text("截图功能依赖「屏幕录制」权限。在系统设置中开启后需重启应用方可生效；进入本页时会自动刷新授权状态。若状态显示已授权但仍无法截屏，请查看下方日志。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(8)
-        }
-    }
-
-    private func refreshScreenCapture() {
-        hasScreenCapture = ScreenshotCaptureService.hasScreenCapturePermission
+        PermissionStatusBar(permission: .screenRecording)
     }
 
     // MARK: - 日志

@@ -18,9 +18,20 @@ struct ContentView: View {
     /// 第三列模式：nil = 占位符，true = 编辑/新增（item==nil 为新增）
     @State private var isEditing = false
     @StateObject private var vm = VaultListViewModel()
+    @ObservedObject private var authPolicy = AuthPolicy.shared
+
+    /// 保险库是否已在**本次运行**里通过操作系统密码验证。
+    /// 只在 `AuthPolicy.requireAuthForVault` 打开时起作用：未验证时内容区换成锁屏占位并自动发起一次
+    /// 验证；**通过后一直保持到应用退出**，期间来回切页面不再重复打断（用户要求「每次打开程序只验一次」）。
+    /// 重新打开那个开关会撤销本次运行的验证（见 body 里的 onChange）。开关默认关闭，对没开它的用户零影响。
+    @State private var vaultUnlocked = false
 
     // 菜单触发的导入/导出动作（传递给 SettingsView）
     @State private var menuTrigger: SettingsAction? = nil
+
+    /// 「设置 → 系统权限」的深链令牌：自增即触发 SettingsView 滚过去并高亮。
+    /// 用 Int 而不是 Bool，是为了连点两次「在设置中管理」也能重新触发（Bool 第二次不变就不生效）。
+    @State private var permissionFocusToken = 0
 
     // 菜单导出
     @State private var showExportWizard   = false
@@ -46,7 +57,8 @@ struct ContentView: View {
                 } detail: {
                     SettingsView(
                         onNavigateToVault: { selectedSection = .vault },
-                        pendingAction: $menuTrigger
+                        pendingAction: $menuTrigger,
+                        permissionFocusToken: permissionFocusToken
                     )
                 }
             } else if selectedSection == .screenshot {
@@ -54,6 +66,14 @@ struct ContentView: View {
                     sidebar
                 } detail: {
                     ScreenshotSettingsView()
+                }
+            } else if needsVaultUnlock {
+                // 未通过验证：第二列（条目列表）也不给 —— 条目名称本身就是信息，
+                // 只留侧边栏 + 锁屏占位，避免「锁了但标题全露着」。
+                NavigationSplitView {
+                    sidebar
+                } detail: {
+                    VaultLockedView { requestVaultUnlock() }
                 }
             } else {
                 NavigationSplitView {
@@ -80,6 +100,13 @@ struct ContentView: View {
         .onChange(of: selectedSection) { _ in
             selectedItem = nil
             isEditing = false
+            // 这里**刻意不**重置 `vaultUnlocked`：离开保险库不再重新上锁。
+            // 用户要求「每次打开程序只需验证一次」，所以验证结果保持到应用退出为止。
+        }
+        .onChange(of: authPolicy.requireAuthForVault) { enabled in
+            // 重新打开这个开关 → 撤销本次运行已通过的验证，下次进保险库要再验一次
+            // （关闭时不用管：开关为 false 时 `needsVaultUnlock` 本来就不成立）。
+            if enabled { vaultUnlocked = false }
         }
         .onChange(of: selectedItem) { _ in
             isEditing = false
@@ -108,6 +135,11 @@ struct ContentView: View {
             selectedSection = .vault
             selectedItem = nil
             DispatchQueue.main.async { isEditing = true }
+        }
+        // 从任意位置（截屏页的权限条、扫码页的权限引导）跳转到「设置 → 系统权限」
+        .onReceive(NotificationCenter.default.publisher(for: .openAppPermissions)) { _ in
+            selectedSection = .settings
+            permissionFocusToken += 1
         }
     }
 
@@ -157,6 +189,24 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
             Text("选择条目查看详情")
                 .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - 保险库锁定
+
+    /// 停在保险库但尚未通过验证。刻意**不**把 `selectedSection == nil` 也算进来：
+    /// 那种情况沿用原来的保险库界面，本开关只改变「明确选中保险库」时的行为。
+    private var needsVaultUnlock: Bool {
+        selectedSection == .vault && authPolicy.requireAuthForVault && !vaultUnlocked
+    }
+
+    /// 发起一次验证。成功即解锁并**保持到应用退出**（本次运行内不再询问）；
+    /// 取消就留在锁屏页，用户可点按钮重试。
+    /// 设备不支持验证时 `authenticate` 会直接放行，与其它三个开关的口径一致。
+    private func requestVaultUnlock() {
+        guard needsVaultUnlock else { return }
+        authPolicy.authenticate(reason: "验证身份后打开保险库") {
+            vaultUnlocked = true
         }
     }
 
@@ -293,6 +343,44 @@ struct ContentView: View {
         }
         .padding(28)
         .frame(width: 320)
+    }
+}
+
+/// 保险库锁屏占位。出现时自动发起一次验证（用户刚从侧边栏点进来，不必再点一次按钮），
+/// 取消后停留在本页，可以点「解锁保险库」重试。
+/// 之所以给显式按钮而不只依赖自动弹窗：系统验证被取消后再想触发，若没有可见入口，
+/// 用户只能靠「切走再切回来」，太隐蔽。
+private struct VaultLockedView: View {
+    var onUnlock: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 44))
+                .foregroundColor(.secondary)
+
+            Text("保险库已锁定")
+                .font(.title3).fontWeight(.semibold)
+
+            Text("已开启「打开保险库」验证。\n请验证操作系统密码后查看密码与验证器。")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                onUnlock()
+            } label: {
+                Label("解锁保险库", systemImage: "lock.open.fill")
+            }
+            .buttonStyle(.primary())
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            // 推迟一拍再发起：视图刚上屏时窗口可能还不是 key window，
+            // 这个时机调 LocalAuthentication 偶尔不弹窗（与截屏文本框抢第一响应者踩过的是同一类坑）。
+            DispatchQueue.main.async { onUnlock() }
+        }
     }
 }
 

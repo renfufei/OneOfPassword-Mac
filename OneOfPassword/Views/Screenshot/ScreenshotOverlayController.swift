@@ -53,11 +53,13 @@ final class ScreenshotOverlayController {
         }
 
         // 先检查屏幕录制权限；未授权时请求系统弹框，不再叠加自定义 alert，避免双弹窗。
-        // 注意：CGRequestScreenCaptureAccess 的返回值在请求瞬间不可靠（授权异步生效），
+        // 状态统一取 `AppPermission`（与「设置 → 系统权限」同一份真相，别再自己调 CGPreflight）。
+        // 注意：`request()` 的返回值在请求瞬间不可靠（授权异步生效），
         // 因此不依据返回值决定是否弹自定义框——交给系统框引导即可。
-        if !CGPreflightScreenCaptureAccess() {
+        if !AppPermission.screenRecording.status.isAuthorized {
             ScreenshotLogger.log("overlay show() no screen capture permission — requesting (system prompt only)")
-            _ = CGRequestScreenCaptureAccess()
+            AppPermission.screenRecording.request()
+            PermissionCenter.shared.refresh()
             return
         }
 

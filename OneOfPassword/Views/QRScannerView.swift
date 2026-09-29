@@ -21,7 +21,10 @@ struct QRScannerView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var isCapturing = false
+
+    // 权限引导：哪个权限被拒了、要不要弹框
     @State private var showPermissionAlert = false
+    @State private var alertPermission: AppPermission = .screenRecording
 
     private let totpGenerator = TOTPGenerator.shared
 
@@ -45,13 +48,20 @@ struct QRScannerView: View {
             } message: {
                 Text(errorMessage)
             }
-            .alert("需要屏幕录制权限", isPresented: $showPermissionAlert) {
-                Button("前往设置") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            .alert("需要「\(alertPermission.title)」权限", isPresented: $showPermissionAlert) {
+                // 优先送用户去应用内的「设置 → 系统权限」：那里能看到完整的用途说明、
+                // 当前状态和诊断日志，而不是一头扎进系统设置里找不到北。
+                Button("去应用设置") {
+                    dismiss()
+                    NotificationCenter.default.post(name: .openAppPermissions, object: nil)
+                }
+                Button("打开系统设置") {
+                    alertPermission.openSystemSettings()
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("截取屏幕需要「屏幕录制」权限。\n请前往「系统设置 → 隐私与安全性 → 屏幕录制」，勾选 OneOfPassword 后重试。")
+                Text("「\(alertPermission.usedBy)」需要「\(alertPermission.title)」权限。\n"
+                     + "可在「设置 → 系统权限」中查看状态，或直接前往「系统设置 → 隐私与安全性 → \(alertPermission.title)」勾选 OneOfPassword。")
             }
             .sheet(isPresented: $showingCamera) {
                 CameraQRView { payload in
@@ -154,17 +164,33 @@ struct QRScannerView: View {
     @State private var showingCamera = false
 
     private func showCameraSheet() {
-        showingCamera = true
+        // 先过权限：摄像头未授权时不再「打开 sheet 看到一片黑」，
+        // 而是就地弹引导（或在系统弹框里当场授权）。
+        AppPermission.requestCamera { granted in
+            PermissionCenter.shared.refresh()
+            if granted {
+                showingCamera = true
+            } else {
+                alertPermission = .camera
+                showPermissionAlert = true
+            }
+        }
     }
 
     // MARK: - 截屏识别
 
     private func captureScreen() async {
-        // 先检查屏幕录制权限
-        guard CGPreflightScreenCaptureAccess() else {
-            CGRequestScreenCaptureAccess()
-            // 请求后再检查一次，仍未授权则提示引导
-            if !CGPreflightScreenCaptureAccess() {
+        // 屏幕录制权限：统一走 `AppPermission` 这一份真相（与「设置 → 系统权限」同源）
+        switch AppPermission.screenRecording.status {
+        case .authorized:
+            break
+        default:
+            // 请求后系统弹框可能同步返回 false（授权异步生效），所以不采信返回值，
+            // 直接提示引导 —— 用户去系统设置勾选后回来即可用。
+            AppPermission.screenRecording.request()
+            PermissionCenter.shared.refresh()
+            if !AppPermission.screenRecording.status.isAuthorized {
+                alertPermission = .screenRecording
                 showPermissionAlert = true
             }
             return
@@ -190,6 +216,9 @@ struct QRScannerView: View {
             // 用户主动取消，静默处理
         } catch {
             NSApp.keyWindow?.deminiaturize(nil)
+            // 走到这里多半仍是权限问题（screencapture 子进程被 TCC 拦下），
+            // 统一按屏幕录制权限引导；`alertPermission` 必须显式设置，否则会沿用上一次的值。
+            alertPermission = .screenRecording
             showPermissionAlert = true
         }
     }
@@ -317,14 +346,19 @@ enum ScreenshotPicker {
 
 struct CameraPreviewView: NSViewRepresentable {
     let onCodeScanned: (String) -> Void
+    /// 摄像头设备打不开时回调（主线程）。以前这里是静默 `return`，表现就是「一片黑、没提示」。
+    var onUnavailable: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> CameraPreview {
         let preview = CameraPreview()
         preview.delegate = context.coordinator
+        preview.onSetupFailed = onUnavailable
         return preview
     }
 
-    func updateNSView(_ nsView: CameraPreview, context: Context) {}
+    func updateNSView(_ nsView: CameraPreview, context: Context) {
+        nsView.onSetupFailed = onUnavailable
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onCodeScanned: onCodeScanned)
@@ -349,6 +383,8 @@ protocol CameraPreviewDelegate: AnyObject {
 
 class CameraPreview: NSView, AVCaptureVideoDataOutputSampleBufferDelegate {
     weak var delegate: CameraPreviewDelegate?
+    /// 设备/输入不可用时回调（主线程）
+    var onSetupFailed: (() -> Void)?
 
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
@@ -369,7 +405,13 @@ class CameraPreview: NSView, AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let videoCaptureDevice = AVCaptureDevice.default(for: .video),
               let videoInput = try? AVCaptureDeviceInput(device: videoCaptureDevice),
-              session.canAddInput(videoInput) else { return }
+              session.canAddInput(videoInput) else {
+            // 别静默 return（用户只会看到一片黑）。交给上层显示明确原因。
+            DispatchQueue.main.async { [weak self] in
+                self?.onSetupFailed?()
+            }
+            return
+        }
 
         session.addInput(videoInput)
 
@@ -432,20 +474,43 @@ struct CameraQRView: View {
     @Environment(\.dismiss) var dismiss
     let onScanned: (String) -> Void
 
+    @ObservedObject private var center = PermissionCenter.shared
+    /// 权限有、但设备打不开（没摄像头 / 被别的 App 独占）
+    @State private var cameraUnavailable = false
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
-                CameraPreviewView { payload in
-                    onScanned(payload)
-                }
-                .frame(height: 400)
-                .cornerRadius(12)
-                .padding()
+                if !center.status(.camera).isAuthorized {
+                    // 权限不到位时直接给引导，不要「先打开预览、再看到一片黑」
+                    PermissionUnavailableView(permission: .camera)
+                        .frame(height: 400)
+                } else if cameraUnavailable {
+                    VStack(spacing: 8) {
+                        Image(systemName: "video.slash")
+                            .font(.system(size: 40))
+                            .foregroundColor(.secondary)
+                        Text("未能启动摄像头")
+                            .font(.headline)
+                        Text("请确认本机有可用摄像头，且未被其他应用占用。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(height: 400)
+                } else {
+                    CameraPreviewView(
+                        onCodeScanned: { payload in onScanned(payload) },
+                        onUnavailable: { cameraUnavailable = true }
+                    )
+                    .frame(height: 400)
+                    .cornerRadius(12)
+                    .padding()
 
-                Text("请将二维码对准摄像头")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom)
+                    Text("请将二维码对准摄像头")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom)
+                }
             }
             .navigationTitle("摄像头扫描")
             .toolbar {
@@ -455,5 +520,7 @@ struct CameraQRView: View {
             }
         }
         .frame(minWidth: 480, minHeight: 480)
+        .onAppear { center.beginObserving() }
+        .onDisappear { center.endObserving() }
     }
 }

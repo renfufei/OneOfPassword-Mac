@@ -37,6 +37,18 @@ enum AnnotationTool: String, CaseIterable, Hashable {
         case .text:      return "textformat"
         }
     }
+
+    /// 悬停提示：说清楚**怎么用**（含修饰键），而不是把名字重复一遍。
+    var hint: String {
+        switch self {
+        case .selection: return "选区：拖拽移动 / 拖边框缩放 / 拖选区外重新框选"
+        case .rectangle: return "矩形：拖拽绘制（按住 Shift = 正方形）"
+        case .circle:    return "圆形：拖拽绘制（按住 Shift = 正圆）"
+        case .arrow:     return "箭头：从起点拖到终点"
+        case .pen:       return "画笔：按住自由绘制"
+        case .text:      return "文本：点一下输入（回车换行，⌘↩ 或 Esc 结束）"
+        }
+    }
 }
 
 /// 文本标注可选字体族（对应二级工具栏的「字体」）。
@@ -76,10 +88,83 @@ enum TextFontDesign: String, CaseIterable, Hashable {
     }
 }
 
-/// 文本标注样式：字号 / 字体族 / 粗细 / 背景 / 边框。
+/// 一枚预设颜色 + 中文名。
+/// 名字有两个用途：① 下拉菜单项的文字（macOS 菜单里色块只能是 `Image`、文字是 `Text`）；
+/// ② 悬停提示 `.help("文字颜色：红")` —— 光秃秃的色块用户根本猜不到点下去会改什么。
+struct ColorOption: Hashable {
+    var color: Color
+    var name: String
+}
+
+/// 颜色的**用途**。四个用途各自的取值互相独立（见 `TextStyle` 的说明），
+/// 所以每处色板与悬停提示都按用途区分。
+enum AnnotationColorRole: String, CaseIterable {
+    case shape
+    case text
+    case background
+    case border
+
+    var label: String {
+        switch self {
+        case .shape:      return "图形"
+        case .text:       return "文字"
+        case .background: return "背景"
+        case .border:     return "边框"
+        }
+    }
+
+    /// 该用途提供的预设色板。
+    var options: [ColorOption] {
+        switch self {
+        case .shape, .text: return AnnotationPalette.drawing
+        case .background:   return AnnotationPalette.background
+        case .border:       return AnnotationPalette.border
+        }
+    }
+
+    /// 颜色的中文名（不在预设里就返回「自定义」，不会崩）。
+    func name(of color: Color) -> String {
+        options.first { $0.color == color }?.name ?? "自定义"
+    }
+}
+
+enum AnnotationPalette {
+    /// 图形 / 画笔 / 箭头 / 文字共用同一组可选色
+    /// —— 注意只是「可选色相同」，写进去的是两个互不相同的字段。
+    static let drawing: [ColorOption] = [
+        ColorOption(color: .red,    name: "红"),
+        ColorOption(color: .yellow, name: "黄"),
+        ColorOption(color: .green,  name: "绿"),
+        ColorOption(color: .blue,   name: "蓝"),
+        ColorOption(color: .white,  name: "白"),
+        ColorOption(color: .black,  name: "黑"),
+    ]
+
+    /// 底色偏深色 —— 截图内容大多是浅色，深底浅字更清楚。
+    static let background: [ColorOption] = [
+        ColorOption(color: .black,  name: "黑"),
+        ColorOption(color: .white,  name: "白"),
+        ColorOption(color: .yellow, name: "黄"),
+        ColorOption(color: .blue,   name: "蓝"),
+    ]
+
+    static let border: [ColorOption] = [
+        ColorOption(color: .white,  name: "白"),
+        ColorOption(color: .black,  name: "黑"),
+        ColorOption(color: .red,    name: "红"),
+    ]
+}
+
+/// 文本标注样式：字号 / 字体族 / 粗细 / 文字色 / 背景 / 边框。
 ///
-/// 文字颜色**不在这里**——复用 `AnnotationShape.color`（与主工具栏色板同一个值），
-/// 避免出现「二级工具栏一个色、主工具栏另一个色」的双份真相。
+/// **四套颜色互相独立，禁止互相借用**（2026-09-29 用户明确要求）：
+/// | 用途 | 字段 | 谁在改 |
+/// |---|---|---|
+/// | 图形（矩形/圆形/箭头/画笔）颜色 | `AnnotationShape.color` | 工具栏第一行「颜色」 |
+/// | 文字颜色 | `TextStyle.textColor` | 二级工具栏「文字」 |
+/// | 背景色（+ `backgroundOpacity`） | `TextStyle.backgroundColor` | 二级工具栏「背景」 |
+/// | 边框色（+ `borderWidth`） | `TextStyle.borderColor` | 二级工具栏「边框」 |
+/// 历史坑：文字颜色一度直接复用 `shape.color`，于是「改图形颜色」会顺手把文字也改掉。
 struct TextStyle: Hashable {
     /// 字号（点）。UI 只提供 **14…72** 的预设档位点选（见 `AnnotationToolbar.fontSizePresets`），
     /// 不再用滑杆 —— 拖动既难精确命中，又会拖出 15.7 这类非整数。
@@ -87,6 +172,9 @@ struct TextStyle: Hashable {
     var design: TextFontDesign = .system
     /// true → semibold，false → regular。默认偏粗，截图上更醒目。
     var bold: Bool = true
+
+    /// 文字颜色。**独立于 `AnnotationShape.color`**（后者只是图形颜色）。
+    var textColor: Color = .white
 
     /// 背景填充不透明度：0 = 完全透明（不画背景）。0…1。
     var backgroundOpacity: Double = 0

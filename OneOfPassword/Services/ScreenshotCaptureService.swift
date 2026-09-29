@@ -63,23 +63,8 @@ enum ScreenshotCaptureService {
         return cropped
     }
 
-    /// 屏幕录制权限是否已授权（screencapture 方案不依赖此权限，保留供设置页展示状态）。
-    static var hasScreenCapturePermission: Bool {
-        CGPreflightScreenCaptureAccess()
-    }
-
-    /// 请求屏幕录制权限（触发系统弹框）。返回当前授权状态，但系统弹框授权是异步生效的，
-    /// 调用方应在用户从系统设置返回后重新检查。
-    @discardableResult
-    static func requestScreenCaptureAccess() -> Bool {
-        CGRequestScreenCaptureAccess()
-    }
-
-    /// 打开系统设置 > 屏幕录制。
-    static func openScreenCaptureSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-        NSWorkspace.shared.open(url ?? URL(fileURLWithPath: "/"))
-    }
+    // 屏幕录制权限的查询 / 申请 / 跳转已统一收拢到 `AppPermission`（Services/AppPermission.swift），
+    // 这里不再保留第二份实现 —— 截屏与验证码「截取屏幕」共用同一份状态真相。
 
     // MARK: - 上次选区记忆
 
@@ -212,7 +197,9 @@ enum ScreenshotCaptureService {
 
             let attr: [NSAttributedString.Key: Any] = [
                 .font: style.nsFont(),
-                .foregroundColor: NSColor(cgColor: cgColor) ?? .red
+                // 文字颜色取 `style.textColor`，**不再复用** `shape.color`（那是图形颜色）。
+                // 同样必须写成 `Self.cgColor(...)`：函数开头的局部变量 `cgColor` 会遮蔽它。
+                .foregroundColor: NSColor(cgColor: Self.cgColor(style.textColor)) ?? .white
             ]
             let attrStr = NSAttributedString(string: str, attributes: attr)
             // 文字左上角 = 盒子左上角 + 内边距；再折算成左下原点的绘制矩形

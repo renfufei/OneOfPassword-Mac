@@ -757,7 +757,9 @@ struct ScreenshotOverlayView: View {
                        lineWidth: style.borderWidth)
         }
         guard !skipText else { return }
-        ctx.draw(Text(str).font(style.swiftUIFont()).foregroundColor(shape.color),
+        // 文字用 `style.textColor`（**不是** `shape.color`）—— 四套颜色互相独立，
+        // 图形颜色、文字色、背景色、边框色分别对应四个字段，改一个不会连带改别的。
+        ctx.draw(Text(str).font(style.swiftUIFont()).foregroundColor(style.textColor),
                  at: CGPoint(x: p.x + style.paddingH, y: p.y + style.paddingV),
                  anchor: .topLeading)
     }
@@ -776,7 +778,9 @@ struct ScreenshotOverlayView: View {
         // 先结束上一段编辑（空内容会被丢弃，不留空壳）
         state.commitEditingText()
         var s = AnnotationShape(tool: .text, points: [loc],
-                                color: state.currentColor, lineWidth: state.lineWidth)
+                                // 文本框的渲染只用 `style.textColor`，这里的 `color` 只是
+                                // 建个一致的值（不再有「文字借用图形色」那条耦合）
+                                color: state.textStyle.textColor, lineWidth: state.lineWidth)
         s.text = ""
         s.style = state.textStyle
         state.shapes.append(s)
@@ -933,7 +937,7 @@ struct ScreenshotOverlayView: View {
         return MultilineTextEditor(
             text: sh.text ?? "",
             style: style,
-            textColor: sh.color,
+            textColor: style.textColor,
             onChange: { newText in
                 guard idx < state.shapes.count else { return }
                 var n = state.shapes[idx]
@@ -1217,8 +1221,10 @@ final class OverlayState: ObservableObject {
             editingTextIndex = nil
             return
         }
+        // 只把文本框的**样式**记成新建默认值。
+        // 注意：**不要**把它的颜色写进 `currentColor` —— 那是「图形/画笔」的默认色，
+        // 拿文字色去覆盖它等于又把两套颜色混起来（四套颜色互相独立是硬要求）。
         textStyle = shapes[idx].style
-        currentColor = shapes[idx].color
         // 多行输入后可能只剩换行/空格 —— 全空白同样视为空内容，不留不可见的空壳。
         let content = shapes[idx].text ?? ""
         if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
