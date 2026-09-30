@@ -4,6 +4,16 @@
 //
 //  复制按钮组件 + 全局按钮样式
 //
+//  === 样式约定（2026-09-30 重做）===
+//  用户反馈：换一台 macOS（27.0.1）后按钮整体变大，有部分被容器遮住了。
+//  根因是**按钮高度不受约束**：label 只给了 `.padding(.vertical, 7)`，
+//  文本一旦被挤到折行，按钮就从 1 行高变成 2 行高，外层定高的 HStack / GroupBox 立刻裁切。
+//  因此这里统一：
+//  ① 高度来自 `AppMetrics`（`minHeight`，不是 padding），跨机器一致；
+//  ② 文本一律 `lineLimit(1)` —— **禁止折行**，这是「高度不可控」的唯一入口；
+//  ③ 字号由 19 收到 14：19pt 在 macOS 上明显偏大，是「按钮显得很大」的直接原因；
+//  ④ 最小宽度给出，避免单字按钮缩成一坨；宽度仍可增长（长文案 / 本地化不受影响）。
+//
 
 import SwiftUI
 
@@ -15,15 +25,17 @@ struct FilledButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 19).weight(.medium))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
+            .font(.system(size: AppMetrics.buttonFontSize, weight: .medium))
+            .lineLimit(1)
+            .padding(.horizontal, AppMetrics.buttonPaddingH)
+            .frame(minWidth: AppMetrics.buttonMinWidth,
+                   minHeight: AppMetrics.buttonHeight)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppMetrics.buttonCorner)
                     .fill(tint.opacity(isDisabled ? 0.30 : (configuration.isPressed ? 0.75 : 1.0)))
             )
             .foregroundColor(isDisabled ? .white.opacity(0.5) : .white)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: AppMetrics.buttonCorner))
     }
 }
 
@@ -35,19 +47,21 @@ struct OutlineButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 19).weight(.medium))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
+            .font(.system(size: AppMetrics.buttonFontSize, weight: .medium))
+            .lineLimit(1)
+            .padding(.horizontal, AppMetrics.buttonPaddingH)
+            .frame(minWidth: AppMetrics.buttonMinWidth,
+                   minHeight: AppMetrics.buttonHeight)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppMetrics.buttonCorner)
                     .fill(tint.opacity(configuration.isPressed ? 0.10 : 0.0))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppMetrics.buttonCorner)
                             .stroke(tint.opacity(isDisabled ? 0.25 : 0.55), lineWidth: 1)
                     )
             )
             .foregroundColor(isDisabled ? tint.opacity(0.35) : tint)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: AppMetrics.buttonCorner))
     }
 }
 
@@ -59,15 +73,17 @@ struct GhostButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 19))
+            .font(.system(size: AppMetrics.ghostFontSize))
+            .lineLimit(1)
             .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .frame(minWidth: AppMetrics.ghostButtonMinWidth,
+                   minHeight: AppMetrics.ghostButtonHeight)
             .background(
-                RoundedRectangle(cornerRadius: 7)
+                RoundedRectangle(cornerRadius: AppMetrics.dropdownCorner)
                     .fill(tint.opacity(isDisabled ? 0.05 : (configuration.isPressed ? 0.18 : 0.10)))
             )
             .foregroundColor(isDisabled ? tint.opacity(0.3) : tint)
-            .contentShape(RoundedRectangle(cornerRadius: 7))
+            .contentShape(RoundedRectangle(cornerRadius: AppMetrics.dropdownCorner))
     }
 }
 
@@ -114,14 +130,17 @@ struct TintedButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 19))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
+            .font(.system(size: AppMetrics.ghostFontSize))
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .frame(minWidth: AppMetrics.ghostButtonMinWidth,
+                   minHeight: AppMetrics.ghostButtonHeight)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppMetrics.dropdownCorner)
                     .fill(tint.opacity(isDisabled ? 0.08 : (configuration.isPressed ? 0.25 : 0.12)))
             )
             .foregroundColor(isDisabled ? .secondary : tint)
+            .contentShape(RoundedRectangle(cornerRadius: AppMetrics.dropdownCorner))
     }
 }
 
@@ -142,8 +161,10 @@ struct IconCircleButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13))
+            .font(.system(size: 13, weight: .medium))
+            .lineLimit(1)
             .foregroundColor(configuration.isPressed ? tint.opacity(0.6) : tint)
+            // 宽高都是显式固定值：图标按钮的形状不随所在容器变化
             .frame(width: size, height: size)
             .background(
                 Circle()
@@ -172,8 +193,13 @@ struct CopyButton: View {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .foregroundColor(copied ? .green : .accentColor)
                 Text(label)
-                    .font(.caption)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
             }
+            // 固定单行高度：borderless 按钮的高度会随文字换行/系统版本漂移，
+            // 这里钉死，保证在密集行里不会把邻居挤走。
+            .frame(height: 20)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
     }

@@ -80,14 +80,22 @@ struct ScreenshotSettingsView: View {
                     Text("触发按键")
                         .font(.subheadline)
                     Spacer()
-                    Picker("", selection: $hk.keyCode) {
-                        ForEach(ScreenshotHotkeyManager.fKeys, id: \.code) { fk in
-                            Text(fk.name).tag(fk.code)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 100)
+                    // 用统一的 AppDropdown 代替裸 `Picker`。
+                    // 两个原因：① `Picker` 在 macOS 上会渲染成长长的一条、字体比周围小一号；
+                    // ② 它给了 `.frame(width: 100)` 硬宽度，新系统的弹窗按钮更宽 → 文字被裁切。
+                    // 现在宽高由 `AppMetrics` 固定，按钮上直接显示当前按键。
+                    AppDropdown(
+                        title: fKeyName(hk.keyCode),
+                        leading: .icon("keyboard"),
+                        items: ScreenshotHotkeyManager.fKeys.map(\.code),
+                        label: { fKeyName($0) },
+                        isCurrent: { $0 == hk.keyCode },
+                        onPick: { hk.keyCode = $0 },
+                        style: .light,
+                        help: "触发按键：\(fKeyName(hk.keyCode))（点击选择）"
+                    )
                     .disabled(!hk.enabled)
+                    .opacity(hk.enabled ? 1 : 0.5)
                 }
                 .padding(.vertical, 6)
 
@@ -135,6 +143,13 @@ struct ScreenshotSettingsView: View {
             Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch)
         }
         .padding(.vertical, 6)
+    }
+
+    /// F 键编号 → 显示名（120 → "F2"）。
+    /// `ScreenshotHotkeyManager.fKeys` 是元组数组，而元组不满足 `Hashable`，
+    /// 无法直接当 `AppDropdown` 的选项类型，所以下拉用编号当选项、这里做名称映射。
+    private func fKeyName(_ code: Int) -> String {
+        ScreenshotHotkeyManager.fKeys.first { $0.code == code }?.name ?? "F?"
     }
 
     // MARK: - 权限

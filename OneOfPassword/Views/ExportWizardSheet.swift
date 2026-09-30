@@ -55,9 +55,10 @@ struct ExportWizardSheet: View {
     private let dataStore = DataStore.shared
     private let authPolicy = AuthPolicy.shared
 
-    // 数据摘要（用于步骤3展示）
-    private var pwCount: Int  { dataStore.vaultItems.filter { $0.type == .password }.count }
-    private var gaCount: Int  { dataStore.vaultItems.filter { $0.type == .totp }.count }
+    // 数据摘要（用于步骤3展示）。口径统一走 `VaultStatistics`（唯一真相）：
+    // 原先就地写 `filter { $0.type == .totp }`，漏掉了"密码条目内嵌的验证器"，
+    // 于是导出摘要里的验证器数量恒为 0（与设置页同一个 bug）。
+    private var stats: VaultStatistics { dataStore.statistics }
 
     private var passwordMismatch: Bool {
         !password.isEmpty && !confirm.isEmpty && password != confirm
@@ -297,7 +298,9 @@ struct ExportWizardSheet: View {
                            label: "加密",
                            value: (format == .onePWD) ? "已加密（AES-GCM）" : "未加密")
                 Divider().padding(.leading, 36)
-                summaryRow(icon: "key.fill", label: "密码条目", value: "\(pwCount) 条")
+                summaryRow(icon: "key.fill", label: "密码条目", value: "\(stats.loginCount) 条")
+                Divider().padding(.leading, 36)
+                summaryRow(icon: "shield.checkered", label: "验证器", value: "\(stats.totpCount) 条")
             }
             .background(Color.secondary.opacity(0.06))
             .cornerRadius(10)

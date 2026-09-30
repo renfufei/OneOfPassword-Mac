@@ -96,7 +96,11 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 1250, minHeight: 780)
+        // 最小窗口尺寸按「13 吋 MacBook Air 逻辑分辨率 1440×900」反推：
+        // 可用高度 ≈ 900 − 菜单栏 − Dock ≈ 815，原先 780 几乎顶满，加上标题栏就超出屏幕；
+        // 宽度 1250 也让小屏机器无法缩到合适大小。1160×720 仍能容纳
+        // 侧边栏(200) + 条目列表(200) + 详情(≥700) 三栏。
+        .frame(minWidth: 1160, minHeight: 720)
         .onChange(of: selectedSection) { _ in
             selectedItem = nil
             isEditing = false
@@ -342,7 +346,9 @@ struct ContentView: View {
             }
         }
         .padding(28)
-        .frame(width: 320)
+        // minWidth 而不是固定 width：按钮文字在不同字体渲染下会变宽，
+        // 固定宽度会把它们裁掉；给下限即可，超长时容器自己会长。
+        .frame(minWidth: 320)
     }
 }
 

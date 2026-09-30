@@ -402,6 +402,10 @@ struct ItemDetailView: View {
         }
 
         Section {
+            // 这是一条**整行**下拉（表单里的「添加更多…」入口），与别处的紧凑下拉不同：
+            // 它需要占满行宽，所以没有用 `AppDropdown`（那个是 fixedSize 的内容宽度）。
+            // 但高度 / 字号 / 圆角同样从 `AppMetrics` 取 —— 旧版没有任何高度约束，
+            // 文字一旦折行或系统控件变大，Section 行高就把内容裁掉了。
             Menu {
                 Button {
                     let ep = ExtraPassword()
@@ -437,20 +441,23 @@ struct ItemDetailView: View {
                     Label("加密字段", systemImage: "lock.fill")
                 }
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.accentColor)
+                        .font(.system(size: 13))
                     Text("添加更多…")
-                        .fontWeight(.semibold)
-                        .foregroundColor(.accentColor)
-                    Spacer()
+                        .font(.system(size: AppMetrics.buttonFontSize, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(.accentColor)
+                        .font(.system(size: 10, weight: .bold))
                 }
+                .foregroundColor(.accentColor)
+                .padding(.horizontal, AppMetrics.dropdownPaddingH + 2)
+                .frame(height: AppMetrics.buttonHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .dropdownChrome(.light, height: AppMetrics.buttonHeight)
         }
     }
 

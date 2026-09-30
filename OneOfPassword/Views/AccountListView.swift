@@ -19,41 +19,16 @@ struct VaultListView: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer().frame(height: 20)
-            // 搜索框 + 排序选择器
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 13))
-                TextField("搜索…", text: $listVM.searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                if !listVM.searchText.isEmpty {
-                    Button { listVM.searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.borderless)
+
+            // 头部拆成两行：搜索（整行）+ 排序（右对齐）。
+            // 原因：侧边栏宽度只有 180~220pt，把排序下拉塞进搜索行会把输入框
+            // 挤到十几像素宽；而排序按钮本身也需要足够宽度才能显示当前排序名。
+            VStack(spacing: 6) {
+                searchRow
+                HStack {
+                    Spacer()
+                    sortDropdown
                 }
-                Menu {
-                    ForEach(SortOrder.allCases) { order in
-                        Button {
-                            listVM.sortOrder = order
-                        } label: {
-                            if listVM.sortOrder == order {
-                                Label(order.rawValue, systemImage: "checkmark")
-                            } else {
-                                Text(order.rawValue)
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -82,6 +57,47 @@ struct VaultListView: View {
         .alert("提示", isPresented: $listVM.showingAlert) {
             Button("确定", role: .cancel) {}
         } message: { Text(listVM.alertMessage) }
+    }
+
+    // MARK: - 头部（搜索 / 排序）
+
+    /// 搜索行：整行占满。固定 22pt 高，避免 TextField 高度随系统版本变化把头部撑高。
+    private var searchRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+                .font(.system(size: 13))
+            TextField("搜索…", text: $listVM.searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+            if !listVM.searchText.isEmpty {
+                Button { listVM.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.borderless)
+                .help("清空搜索")
+            }
+        }
+        .frame(height: 22)
+    }
+
+    /// 排序下拉：统一控件（固定 28pt 高 / 13pt 字 / 悬停高亮），
+    /// 并把**当前排序名**直接显示在按钮上。
+    /// 旧实现是一个裸的 borderless 图标菜单：看不出当前按什么排序，
+    /// 而且裸 `Menu` 的尺寸会跟随 macOS 版本变化（新系统的弹窗按钮更高更宽）。
+    private var sortDropdown: some View {
+        AppDropdown(
+            title: listVM.sortOrder.rawValue,
+            leading: .icon("arrow.up.arrow.down"),
+            items: SortOrder.allCases,
+            label: { $0.rawValue },
+            isCurrent: { listVM.sortOrder == $0 },
+            onPick: { listVM.sortOrder = $0 },
+            style: .light,
+            help: "排序：\(listVM.sortOrder.rawValue)（点击切换）"
+        )
     }
 
     // MARK: - 工具栏

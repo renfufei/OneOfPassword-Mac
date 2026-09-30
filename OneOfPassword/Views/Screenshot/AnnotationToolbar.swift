@@ -17,6 +17,14 @@
 //  ④ 色板分组的可见标签（`groupLabel`）：「文字 / 背景 / 边框」——
 //     不依赖鼠标悬停也能看懂那一组是干什么的。
 //
+//  === 控件尺寸约定（2026-09-30）===
+//  本工具栏的下拉（字号 / 字体 / 颜色）**全部**基于 `AppControls.swift` 里的
+//  `AppDropdown` / `AppColorDropdown` + `DropdownStyle.dark`，高度统一 26pt、
+//  字号统一 13pt、背景/描边/悬停高亮由 `DropdownChrome` 一处提供。
+//  改造前每个下拉各写一份字体（11/12）与内边距，视觉上忽大忽小；
+//  且尺寸跟随 macOS 版本漂移（新系统的菜单按钮更高更宽）→ 工具栏被撑高后位置钳制失效。
+//  本文件**不再自己拼 Menu**，要加下拉请直接用上面的统一控件。
+//
 
 import SwiftUI
 import AppKit
@@ -76,10 +84,6 @@ struct AnnotationToolbar: View {
     var onUndo: () -> Void
     var onDelete: () -> Void
     var onCancel: () -> Void
-
-    /// 下拉控件的悬停高亮：默认底色很淡，鼠标移上去变亮，让人看得出「这里能点」。
-    @State private var hoverFontSize = false
-    @State private var hoverFont = false
 
     private var isTextMode: Bool { selectedTool == .text }
 
@@ -203,66 +207,22 @@ struct AnnotationToolbar: View {
     // MARK: - 颜色控件（1 张当前色卡 + 下拉弹出）
 
     /// 紧凑颜色控件：**1 张当前色卡 + 一个下拉箭头**，点任意位置弹出该用途的全部预设色。
-    /// 为什么这么改（用户反馈）：平铺一排色卡既占地方、又没人分得清哪个是文字色哪个是边框色；
-    /// 收成「当前色常驻 + 其余进弹出层」后，一眼能看出当前值，选中后色卡立即被替换。
+    ///
+    /// 实现已统一到 `AppColorDropdown`（固定高度 + 统一字体/内边距/悬停高亮/色块图），
+    /// 这里只负责把 `AnnotationColorRole` 的色板与当前值适配过去。
+    /// `role` 同时决定配色与提示文案，四套颜色（图形/文字/背景/边框）互不串用。
     private func colorWell(_ color: Binding<Color>, role: AnnotationColorRole) -> some View {
         let current = color.wrappedValue
-        return Menu {
-            ForEach(role.options, id: \.name) { opt in
-                Button {
-                    color.wrappedValue = opt.color
-                } label: {
-                    // 必须用 `Label { } icon: { }` 显式形式：
-                    // `Label("名", image: ...)` 会和 `Label(_:image name:)`（字符串资源名重载）
-                    // 打架，传 `Image` 会报「cannot convert Image to String」。
-                    Label {
-                        Text(opt.color == current ? "\(opt.name)（当前）" : opt.name)
-                    } icon: {
-                        Image(nsImage: swatchImage(opt.color))
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(current)
-                    .frame(width: 16, height: 16)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(.white.opacity(0.85), lineWidth: 1)
-                    )
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 5)
-            .frame(height: 26)
-            // 显式命中形状：否则 HStack 里的透明间隙不参与命中测试，
-            // 只有色块上那几像素能点到，看起来就像「点不动」。
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.18)))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.5), lineWidth: 1))
-        .help("\(role.label)颜色：\(role.name(of: current))（点击选择）")
-    }
-
-    /// 菜单项里的色块图。
-    /// macOS 菜单只渲染 `Image` / `Text`，不认 SwiftUI 的 `Circle` / `RoundedRectangle`，
-    /// 所以先把颜色画成一张小 `NSImage` 再塞进 `Label`。
-    private func swatchImage(_ c: Color, size: CGFloat = 14) -> NSImage {
-        NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            let r = rect.insetBy(dx: 1, dy: 1)
-            let path = NSBezierPath(roundedRect: r, xRadius: 3, yRadius: 3)
-            NSColor(c).setFill()
-            path.fill()
-            NSColor.white.withAlphaComponent(0.55).setStroke()
-            path.lineWidth = 1
-            path.stroke()
-            return true
-        }
+        return AppColorDropdown(
+            current: current,
+            options: role.options.map { (name: $0.name, color: $0.color) },
+            onPick: { color.wrappedValue = $0 },
+            style: .dark,
+            // 截屏工具栏是紧凑深色浮层：26pt 与同排的工具按钮(30)/样式按钮(26)对齐，
+            // 比设置页的 28pt 矮一点，避免工具栏被撑高。
+            height: 26,
+            help: "\(role.label)颜色：\(role.name(of: current))（点击选择）"
+        )
     }
 
     /// 「背景透明」按钮 —— 它是状态（`backgroundOpacity = 0`）而不是一种颜色，所以不进色板。
@@ -305,92 +265,39 @@ struct AnnotationToolbar: View {
     private let fontSizePresets: [CGFloat] = [14, 16, 18, 20, 22, 24, 28, 32, 36, 42, 48, 56, 64, 72]
 
     /// 字号控件：预设下拉（14–72）。
-    /// 三个细节都是为了「一眼能看到、随手能点开」：
-    /// ① 背景 + 描边画在 `Menu` **外层** —— 写在 `label` 里的 background 会被
-    ///    `.borderlessButton` 菜单样式接管，实际渲染出来近乎透明，很难发现这里有控件；
-    /// ② 图标 / 文字 / 箭头**全都在 label 内**，所以控件左侧整片区域都能点开菜单
-    ///    （用户预期「Aa 子工具栏左边随便点都能选字号」）；
-    /// ③ 明确写出「字号」二字，而不是只留一个裸数字。
+    ///
+    /// 改用统一的 `AppDropdown`（深色）实现：字体 / 高度 / 内边距 / 悬停高亮全部来自
+    /// `AppMetrics` 与 `DropdownStyle`，不再各写一份 —— 之前这个控件写 12pt、
+    /// 旁边的图标写 11pt、边框按钮又写 11pt，视觉上就是用户说的「字体小、忽大忽小」。
+    /// 图标 + 「字号 18」+ 箭头都在按钮内，左侧整片区域都是热区。
     private var fontSizeControl: some View {
-        Menu {
-            ForEach(fontSizePresets, id: \.self) { size in
-                Button {
-                    textStyle.fontSize = size
-                } label: {
-                    if abs(textStyle.fontSize - size) < 0.5 {
-                        Label("\(Int(size))（当前）", systemImage: "checkmark")
-                    } else {
-                        Text("\(Int(size))")
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "textformat.size")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("字号 \(Int(textStyle.fontSize.rounded()))")
-                    .font(.system(size: 12, weight: .medium))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 9)
-            .frame(height: 26)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.white.opacity(hoverFontSize ? 0.3 : 0.18))
+        AppDropdown(
+            title: "字号 \(Int(textStyle.fontSize.rounded()))",
+            leading: .icon("textformat.size"),
+            items: fontSizePresets,
+            label: { "\(Int($0))" },
+            isCurrent: { abs(textStyle.fontSize - $0) < 0.5 },
+            onPick: { textStyle.fontSize = $0 },
+            style: .dark,
+            // 截屏工具栏是紧凑深色浮层：26pt 与同排按钮对齐
+            height: 26,
+            help: "字号：\(Int(textStyle.fontSize.rounded()))（点击选择 14–72）"
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(.white.opacity(hoverFontSize ? 0.75 : 0.5), lineWidth: 1)
-        )
-        .onHover { hoverFontSize = $0 }
-        .help("字号：\(Int(textStyle.fontSize.rounded()))（点击选择 14–72）")
     }
 
+    /// 字体族下拉（深色），同样走统一控件。
     private var fontMenu: some View {
-        Menu {
-            ForEach(TextFontDesign.allCases, id: \.self) { d in
-                Button {
-                    textStyle.design = d
-                } label: {
-                    if textStyle.design == d {
-                        Label("\(d.label)（当前）", systemImage: "checkmark")
-                    } else {
-                        Text(d.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "character")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(textStyle.design.label).font(.system(size: 12, weight: .medium))
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 9)
-            .frame(height: 26)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.white.opacity(hoverFont ? 0.3 : 0.18))
+        AppDropdown(
+            title: textStyle.design.label,
+            leading: .icon("character"),
+            items: TextFontDesign.allCases,
+            label: { $0.label },
+            isCurrent: { textStyle.design == $0 },
+            onPick: { textStyle.design = $0 },
+            style: .dark,
+            height: 26,
+            help: "字体：\(textStyle.design.label)（点击切换）"
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(.white.opacity(hoverFont ? 0.75 : 0.5), lineWidth: 1)
-        )
-        .onHover { hoverFont = $0 }
-        .help("字体：\(textStyle.design.label)（点击切换）")
     }
 
     private var boldButton: some View {

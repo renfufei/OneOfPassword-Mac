@@ -2,7 +2,7 @@
 //  SettingsView.swift
 //  OneOfPassword
 //
-//  设置页：导入 / 导出 / 数据信息
+//  设置页：数据统计 / 系统权限 / 安全验证 / 存储位置 / 导入导出（沉底）
 //
 
 import SwiftUI
@@ -51,11 +51,13 @@ struct SettingsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    importExportSection
+                    // 顺序：先「看得见的日常信息」（统计 / 权限 / 安全 / 存储），
+                    // 低频且带风险的「导入 / 导出」沉到最底部，避免误点。
                     dataInfoSection
                     permissionSection
                     authSection
                     storageSection
+                    importExportSection
                 }
                 .padding(28)
             }
@@ -179,17 +181,50 @@ struct SettingsView: View {
 
     // MARK: - 数据统计区块
 
+    /// 统计口径全部来自 `VaultStatistics`（唯一真相），这里只负责排版。
+    /// 每格都挂 `help`：数字和条目数看起来"对不上"时（例如「验证器 16」而列表里只有 28 个条目），
+    /// 用户第一反应是"统计错了"，把口径写在悬停提示里最省事。
     private var dataInfoSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 16) {
-                Label("数据统计", systemImage: "chart.bar.fill")
-                    .font(.headline)
+        let stats = dataStore.statistics
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("数据统计", systemImage: "chart.bar.fill")
+                        .font(.headline)
+                    Spacer()
+                    if let updated = stats.lastUpdated {
+                        Text("最近修改 " + Self.relativeFormatter
+                                .localizedString(for: updated, relativeTo: Date()))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
 
-                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                Divider()
+
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                     GridRow {
-                        statCell(icon: "key.fill",         color: .blue,   label: "密码",  count: dataStore.vaultItems.filter { $0.type == .password }.count)
-                        statCell(icon: "shield.checkered", color: .green,  label: "验证器", count: dataStore.vaultItems.filter { $0.type == .totp }.count)
-                        statCell(icon: "note.text",        color: .orange, label: "便签",  count: dataStore.noteItems.count)
+                        statCell(icon: "square.stack.3d.up.fill", color: .indigo,
+                                 value: "\(stats.itemCount)", label: "条目",
+                                 help: "条目总数：密码条目 \(stats.loginCount) 个 + 验证器条目 \(stats.totpItemCount) 个。")
+                        statCell(icon: "key.fill", color: .blue,
+                                 value: "\(stats.loginCount)", label: "密码",
+                                 help: "类型为「密码」的条目数（验证器另计）。")
+                        statCell(icon: "shield.checkered", color: .green,
+                                 value: "\(stats.totpCount)", label: "验证器",
+                                 help: stats.totpBreakdownText)
+                    }
+                    GridRow {
+                        statCell(icon: "note.text", color: .orange,
+                                 value: "\(stats.noteCount)", label: "便签",
+                                 help: stats.noteBreakdownText)
+                        statCell(icon: "star.fill", color: .yellow,
+                                 value: "\(stats.favoriteCount)", label: "收藏",
+                                 help: "标记为收藏的条目数。")
+                        statCell(icon: "internaldrive.fill", color: .purple,
+                                 value: stats.storageText, label: "存储占用",
+                                 help: "vault.json + notes.json + secrets.enc 的合计大小。")
                     }
                 }
             }
@@ -197,13 +232,26 @@ struct SettingsView: View {
         }
     }
 
-    private func statCell(icon: String, color: Color, label: String, count: Int) -> some View {
+    /// 「最近修改」用的相对时间（今天 / 3 天前 / 2 个月前）
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
+    private func statCell(icon: String, color: Color, value: String,
+                          label: String, help: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .foregroundColor(color)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(count)").font(.title2.bold())
+                // 一律单行：数字长度不定（存储占用是 "1.2 MB"），
+                // 折行会把这格撑高、把同行的其它格挤变形。
+                Text(value)
+                    .font(.title2.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text(label).font(.caption).foregroundColor(.secondary)
             }
         }
@@ -211,6 +259,7 @@ struct SettingsView: View {
         .padding(10)
         .background(Color.gray.opacity(0.07))
         .cornerRadius(8)
+        .help(help)
     }
 
     // MARK: - 系统权限区块
@@ -231,23 +280,48 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Label("需要验证操作系统密码", systemImage: "lock.shield.fill")
                     .font(.headline)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 6)
+
+                Text("以下开关决定“在哪个动作上”要求验证，默认全部关闭；关闭某个开关本身也会验证一次身份。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 8)
 
                 Divider()
-                authToggleRow(label: "导出备份",    isOn: $authPolicy.requireAuthForExport,
+                authGroupTitle("敏感操作", detail: "会产生可外泄的文件，或不可逆地改动数据")
+                authToggleRow(label: "导出备份", isOn: $authPolicy.requireAuthForExport,
                               help: "导出含明文密码的备份文件前，需要验证操作系统密码")
                 Divider()
-                authToggleRow(label: "打开保险库",  isOn: $authPolicy.requireAuthForVault,
+                authToggleRow(label: "删除条目", isOn: $authPolicy.requireAuthForDelete,
+                              help: "删除密码 / 验证器条目时，需要验证操作系统密码")
+                Divider()
+                authGroupTitle("查看操作", detail: "只是打开看得见的内容或位置")
+                authToggleRow(label: "打开保险库", isOn: $authPolicy.requireAuthForVault,
                               help: "进入「保险库」查看密码与验证器之前，需要验证操作系统密码；每次启动应用只需验证一次。默认关闭")
                 Divider()
                 authToggleRow(label: "打开存储位置", isOn: $authPolicy.requireAuthForFinder,
                               help: "在访达中打开应用数据目录前，需要验证操作系统密码")
-                Divider()
-                authToggleRow(label: "删除条目",    isOn: $authPolicy.requireAuthForDelete,
-                              help: "删除密码 / 验证器条目时，需要验证操作系统密码")
             }
             .padding(8)
         }
+    }
+
+    /// 分组小标题：4 个开关原本同质平铺，用户看不出哪个更该开；按风险分成两组后一眼能分辨。
+    private func authGroupTitle(_ title: String, detail: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundColor(.secondary)
+            Text(detail)
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.7))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 2)
     }
 
     /// 一行策略开关。`help` 是悬停说明：这几个开关的差别只在「在哪个动作上验证」，
@@ -275,6 +349,8 @@ struct SettingsView: View {
             .labelsHidden()
             .toggleStyle(.switch)
         }
+        // 行高下限：`Toggle` 的高度由系统控件决定，给个下限免得被外层容器裁掉
+        .frame(minHeight: AppMetrics.settingRowMinHeight)
         .padding(.vertical, 6)
         .help(help ?? label)
     }
@@ -286,6 +362,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("存储位置", systemImage: "folder.fill")
                     .font(.headline)
+
+                Text("数据分两部分存放：条目与便签是明文 JSON，密码与验证器密钥在加密文件里。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 let dir = appSupportPath()
                 pathRow(label: "数据目录",   path: dir,
@@ -430,6 +511,7 @@ private struct PathRow: View {
     let subtitle: String
 
     @State private var showWarning = false
+    @State private var copied = false
     private let authPolicy = AuthPolicy.shared
 
     var body: some View {
@@ -437,22 +519,29 @@ private struct PathRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .foregroundColor(.secondary)
-                    .frame(width: 100, alignment: .leading)
+                    .frame(width: AppMetrics.pathLabelWidth, alignment: .leading)
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.caption2)
                         .foregroundColor(.secondary.opacity(0.7))
-                        .frame(width: 100, alignment: .leading)
+                        .frame(width: AppMetrics.pathLabelWidth, alignment: .leading)
                 }
             }
+            // 路径最多折两行：单行 + tail 截断会把 `…/com.oneofpassword.app`
+            // 的后半截掉，用户看不出是哪个目录；`.middle` 保留头尾更好认。
             Text(path)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
-            Spacer()
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            copyButton
             Button {
                 showWarning = true
             } label: {
                 Image(systemName: "arrow.right.circle")
+                    .frame(width: AppMetrics.iconButtonWidth)
             }
             .buttonStyle(.borderless)
             .help("在 Finder 中显示")
@@ -467,6 +556,24 @@ private struct PathRow: View {
                 Text("此目录包含应用的所有数据文件。请勿删除或修改其中的文件，否则可能导致数据丢失。")
             }
         }
+    }
+
+    /// 复制路径：路径文本虽然可选中，但「拖选一整条再 ⌘C」不好用，直接给按钮。
+    /// 点完把图标换成对勾 1.2 秒，否则用户不知道到底复制成功没有。
+    private var copyButton: some View {
+        Button {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(path, forType: .string)
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+        } label: {
+            Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                .foregroundColor(copied ? .green : .secondary)
+                .frame(width: AppMetrics.iconButtonWidth)
+        }
+        .buttonStyle(.borderless)
+        .help(copied ? "已复制" : "复制路径")
     }
 
     private func authenticatedOpen() {

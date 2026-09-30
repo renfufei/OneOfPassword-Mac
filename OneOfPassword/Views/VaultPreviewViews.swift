@@ -75,7 +75,10 @@ struct VaultItemPreviewView: View {
                     }
                     .labelStyle(.titleAndIcon)
                     .buttonStyle(.primary())
-                    .font(.system(size: 19).weight(.medium))
+                    // 这里原本叠了一个 `.font(.system(size: 19).weight(.medium))`，
+                    // 会盖掉统一按钮样式的字号，导致这个按钮比别处大一号（也正是
+                    // 「换一台 Mac 按钮变大被遮住」的其中一处来源）。字号一律由
+                    // `AppMetrics.buttonFontSize` 决定，不要再在调用点覆写。
                 }
                 .padding(.trailing, 12)
                 .frame(maxHeight: .infinity, alignment: .center)
