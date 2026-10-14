@@ -1,6 +1,6 @@
 # OneOfPassword for Mac
 
-原生 macOS 密码与两步验证管理应用，使用 Swift + SwiftUI 开发。当前版本：**1.16**
+原生 macOS 密码与两步验证管理应用，使用 Swift + SwiftUI 开发。当前版本：**1.72**
 
 ---
 
@@ -152,10 +152,10 @@ xcodegen generate
 xcodebuild -scheme OneOfPassword -configuration Release -quiet
 
 # 或使用打包脚本（生成含安装说明的 DMG）
-./build.sh 1.16
+./build.sh 1.72
 ```
 
-打包脚本会生成 `build/OneOfPassword-1.15.dmg`，DMG 内含：
+打包脚本会生成 `build/OneOfPassword-1.72.dmg`，DMG 内含：
 - `OneOfPassword.app`
 - `Applications` 快捷方式
 - `安装说明.txt`（含 Gatekeeper 绕过说明）

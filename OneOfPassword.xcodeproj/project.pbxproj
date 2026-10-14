@@ -22,6 +22,7 @@
 		574EDF779AC0FCF6533DA894 /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F596C65B923B396579BFC8A /* ClipboardManager.swift */; };
 		58607B100344D6A086C31127 /* ScreenshotOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */; };
 		5B114E8F9FA6C1563B89B959 /* ItemCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E3E8B4A645B9E20FA3691B /* ItemCategory.swift */; };
+		5D70DC3958734FB791559990 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A152EC1474D8C2EF6606C31 /* LaunchAtLogin.swift */; };
 		63E4F631A2C6A981E6A1FE55 /* AnnotationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */; };
 		66257EC1D900D1DE7B751B4A /* EditingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23447C775659B86B06F6F3CA /* EditingState.swift */; };
 		69B1A83AF1D052E3AA07388C /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768BE1B4C7924E76F21F1580 /* QRScannerView.swift */; };
@@ -80,6 +81,7 @@
 		842B9020A1D36AA115739212 /* AccountListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountListViewModel.swift; sourceTree = "<group>"; };
 		8434C2609890FBA7F349A6F8 /* AuthPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthPolicy.swift; sourceTree = "<group>"; };
 		8716EC2CFC3A5BFD363C19CD /* ScreenshotOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotOverlayView.swift; sourceTree = "<group>"; };
+		8A152EC1474D8C2EF6606C31 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
 		8ED77E5926191ED9D14C10D9 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
 		9D7727AABA2FB86DC9213AC6 /* OneOfPasswordApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneOfPasswordApp.swift; sourceTree = "<group>"; };
 		9F596C65B923B396579BFC8A /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 				3FB2D9029679A2778BFBFC49 /* EncryptedStore.swift */,
 				AB24266E4A86E3CEF527F873 /* ImportExportService.swift */,
 				67042E821D4BE20D5B2B2B86 /* KeychainService.swift */,
+				8A152EC1474D8C2EF6606C31 /* LaunchAtLogin.swift */,
 				B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */,
 				B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */,
 				E500CC06D5E60BD9076BE49A /* ScreenshotCaptureService.swift */,
@@ -317,6 +320,7 @@
 				5B114E8F9FA6C1563B89B959 /* ItemCategory.swift in Sources */,
 				B35177D494F6F23116B5DC57 /* ItemDetailView.swift in Sources */,
 				137A823114348AD2AE3AF87D /* KeychainService.swift in Sources */,
+				5D70DC3958734FB791559990 /* LaunchAtLogin.swift in Sources */,
 				E926FA3FE082C25BC89FAFB3 /* MultilineTextEditor.swift in Sources */,
 				0DA78B5FFDE0AE22B61C9231 /* NoteEditorView.swift in Sources */,
 				A524DE6D6365C8FFBA409077 /* NoteItem.swift in Sources */,

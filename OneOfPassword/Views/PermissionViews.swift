@@ -6,6 +6,8 @@
 //
 //  · `PermissionCenterSection` —— 完整管理区块，放在「设置」页。
 //    它是**唯一的授权操作入口**（授权 / 打开系统设置 / 重新检测）。
+//    区块末尾还有一行 `LaunchAtLoginRow`（开机启动）：它不是 TCC 权限，
+//    但同属"应用级 + 系统托管 + 用户能在系统设置里改"，所以视觉上并入同一区块。
 //
 //  · `PermissionStatusBar` —— 紧凑状态条，放在**使用点**（截屏页、扫码页）。
 //    只报「当前状态 + 该去哪里办」，不在这里做授权 —— 同一个权限在多个页面各放一份
@@ -54,7 +56,14 @@ struct PermissionCenterSection: View {
 
                 Divider()
 
-                Label("权限由 macOS 统一管理，授权后需重启应用生效。以上数据均只在本机处理。",
+                // 「开机启动」不是 TCC 权限（没有"允许 / 拒绝"授权弹框），但同属
+                // "应用级、由系统托管、用户可以随时在系统设置里改"的能力，
+                // 所以排在同一区块里，样式与权限行一致。
+                LaunchAtLoginRow()
+
+                Divider()
+
+                Label("权限由 macOS 统一管理，屏幕录制授权后需重启应用生效；以上数据均只在本机处理。",
                       systemImage: "info.circle")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -149,17 +158,7 @@ private struct PermissionRow: View {
     }
 
     private var statusPill: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 7, height: 7)
-            Text(status.label)
-                .font(.caption)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(dotColor.opacity(0.14)))
-        .foregroundColor(dotColor)
+        StatusPill(text: status.label, color: dotColor)
     }
 
     private var dotColor: Color {
@@ -270,5 +269,118 @@ struct PermissionUnavailableView: View {
         .padding()
         .onAppear { center.beginObserving() }
         .onDisappear { center.endObserving() }
+    }
+}
+
+// MARK: - 状态胶囊（权限行 / 开机启动行共用）
+
+/// 「● 已授权」式状态胶囊。抽出来只有一个目的：让**开机启动行**和权限行长得一模一样 ——
+/// 两处各写一份，字号、圆点尺寸、底色透明度迟早会飘。
+struct StatusPill: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text(text)
+                .font(.caption)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(color.opacity(0.14)))
+        .foregroundColor(color)
+    }
+}
+
+// MARK: - 开机启动行
+
+/// 「开机启动」：开关 + 状态胶囊 + 跳转系统设置。
+///
+/// 交互对齐权限行的三条约定：
+/// ① 状态**永远以系统为准**（应用激活时重读），开关只是"请求"，失败就回弹并说明原因；
+/// ② 状态异常（系统侧禁止 / 状态不可识别）给一行橙色提示，而不是只换个颜色；
+/// ③ 一律提供「系统设置」入口 —— 用户可能想自己看/改，而不是被应用的开关绑住。
+private struct LaunchAtLoginRow: View {
+    @ObservedObject private var service = LaunchAtLoginService.shared
+
+    private var presentation: LaunchAtLoginPresentation { service.presentation }
+
+    /// 开关是只写通道：真实状态由系统决定，不能双向绑定 ——
+    /// 否则界面会先跳到新位置、失败后再弹回来，看着像闪了一下。
+    private var toggleBinding: Binding<Bool> {
+        Binding(get: { presentation.toggleOn },
+                set: { service.setEnabled($0) })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "power")
+                    .foregroundColor(.secondary)
+                    .frame(width: 18)
+
+                Text("开机启动")
+                    .fontWeight(.medium)
+
+                StatusPill(text: presentation.label, color: pillColor)
+
+                Spacer()
+
+                Toggle("", isOn: toggleBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .frame(minHeight: AppMetrics.settingRowMinHeight)
+                    .help("开启后把本应用加入 macOS「登录项」，下次开机自动启动；默认关闭")
+
+                Button {
+                    service.openLoginItemsSettings()
+                } label: {
+                    Label("系统设置", systemImage: "gearshape")
+                }
+                .buttonStyle(.secondary())
+                .help("打开「系统设置 → 通用 → 登录项」，可查看、允许或移除本应用")
+            }
+
+            Text("用于：开机后自动启动本应用（可选，默认关闭）")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.leading, 26)
+
+            Text("应用只在打开时工作、不常驻后台；开启后会出现在系统「登录项」里，随时可以关掉。")
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 26)
+
+            if let hint = presentation.hint {
+                Label(hint, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 26)
+            }
+
+            if let error = service.lastError {
+                Label(error, systemImage: "xmark.octagon")
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 26)
+            }
+        }
+        .padding(.vertical, 10)
+        .onAppear { service.refresh() }
+    }
+
+    private var pillColor: Color {
+        switch presentation.tone {
+        case .on:      return .green
+        case .off:     return .secondary
+        case .warning: return .orange
+        }
     }
 }
