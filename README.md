@@ -160,6 +160,29 @@ xcodebuild -scheme OneOfPassword -configuration Release -quiet
 - `Applications` 快捷方式
 - `安装说明.txt`（含 Gatekeeper 绕过说明）
 
+### 发布到 GitHub Releases
+
+```bash
+./release.sh              # 版本号取自 project.yml，DMG 缺失时自动构建
+./release.sh 1.72         # 指定版本号
+./release.sh --draft      # 先发草稿，确认后再到网页 Publish
+./release.sh --dry-run    # 只打印将执行的命令，不改远端
+```
+
+`release.sh` 依次完成：准备 DMG → 检查 git 状态 → 创建并推送 `v<版本>` tag → 收集上次发布以来的提交作为说明 → 上传 DMG。
+
+认证有两条通道，装了 `gh` 就自动走第一条：
+
+| 通道 | 前置 | 说明 |
+|---|---|---|
+| `gh` CLI | `brew install gh && gh auth login` | 最省事，认证交给 gh 管理 |
+| REST API + curl | `export GH_TOKEN=<PAT>` | classic PAT 勾 `repo`，fine-grained 勾 `Contents: Write` |
+
+其他选项：`--prerelease`（预发布）、`--title` / `--notes` / `--notes-file`（自定义说明）、`--no-tag`、`--skip-build`。
+重复执行是安全的：已存在的 tag 与 release 会被复用，同名附件会被覆盖。
+
+> 只发一次的话，也可以直接在 GitHub 网页 Releases → Draft a new release 里拖入 DMG，零配置。
+
 ---
 
 ## 安装（分发包）
