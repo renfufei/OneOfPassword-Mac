@@ -17,18 +17,24 @@ import SwiftUI
 /// 这里显式放开 canBecomeKey，保证文本标注一定能输入。
 private final class ScreenshotOverlayPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 final class ScreenshotOverlayController {
     static let shared = ScreenshotOverlayController()
 
     private var panel: NSPanel?
+    /// 本次截屏是否发生在「原生全屏 Space」上。
+    /// 全屏 Space 由别的 App 独占，本应用一旦 activate，macOS 就会离开该 Space
+    /// （甩回桌面、甚至新建一个 Space），覆盖层因此出现在错误的界面上。
+    /// 该标志决定覆盖层走「非激活面板」还是原来的「激活应用」流程。
+    private var onFullScreenSpace = false
     /// 覆盖层显示前抓取的全屏快照
     private var snapshot: CGImage?
     /// 截屏前隐藏的应用窗口（恢复时用），按 Z 轴顺序保存
     private var hiddenWindows: [NSWindow] = []
-    /// 截屏前的前台应用（若非本应用）。覆盖层显示期间本应用会被强制激活，
-    /// 恢复时必须主动把焦点还给这个应用，否则会一直抢着前台。
+    /// 截屏前的前台应用（若非本应用）。普通桌面流程会激活本应用，恢复时必须把焦点还回去；
+    /// 全屏 Space 流程不激活本应用，只在保存对话框/弹窗意外激活后用它归还焦点。
     private var previousFrontApp: NSRunningApplication?
     /// autoWindow 开启时，在隐藏本应用窗口之前识别出的鼠标所在窗口 rect
     private var pendingPreferredRect: CGRect?
@@ -63,11 +69,25 @@ final class ScreenshotOverlayController {
             return
         }
 
+        // 必须在隐藏窗口 / 激活应用之前判断：当前 Space 是不是原生全屏 Space。
+        onFullScreenSpace = ScreenshotCaptureService.isFullScreenSpaceActive()
+        ScreenshotLogger.log("overlay show() onFullScreenSpace=\(onFullScreenSpace)")
+
         // 自动识别鼠标所在窗口：必须在隐藏本应用窗口之前取，否则顶层会变
         let autoWindow = UserDefaults.standard.object(forKey: "screenshotAutoWindow") as? Bool ?? false
         ScreenshotLogger.log("overlay show() autoWindow=\(autoWindow) (key=screenshotAutoWindow)")
         pendingPreferredRect = autoWindow ? ScreenshotCaptureService.windowAtMouse() : nil
         ScreenshotLogger.log("overlay show() pendingPreferredRect=\(String(describing: pendingPreferredRect))")
+
+        if onFullScreenSpace {
+            // 目标独占一个全屏 Space：本应用窗口在别的 Space，本来就不会进快照，
+            // 因此既不隐藏也不恢复窗口；更重要的是全程不激活本应用，避免 Space 被切换。
+            let front = NSWorkspace.shared.frontmostApplication
+            previousFrontApp = front?.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : front
+            hiddenWindows = []
+            captureAndShowPanel()
+            return
+        }
 
         // 自动隐藏本应用窗口（默认开启），避免快照里截到应用自身
         let autoHide = UserDefaults.standard.object(forKey: "screenshotAutoHide") as? Bool ?? true
@@ -87,6 +107,9 @@ final class ScreenshotOverlayController {
         let snap = ScreenshotCaptureService.captureFullScreen()
         guard let snap else {
             ScreenshotLogger.log("overlay show() full screen capture failed — abort")
+            // 全屏 Space 下本应用未激活，先激活才能让系统弹框出现在前台；
+            // 随后的 restoreAppWindows() 会把焦点还给原全屏应用。
+            if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
             let alert = NSAlert()
             alert.messageText = "截图失败"
             alert.informativeText = "无法抓取屏幕快照，请重试。"
@@ -102,10 +125,14 @@ final class ScreenshotOverlayController {
             restoreAppWindows()
             return
         }
-        ScreenshotLogger.log("overlay show() creating panel on screen \(screen.frame)")
+        ScreenshotLogger.log("overlay show() creating panel on screen \(screen.frame) onFullScreenSpace=\(onFullScreenSpace)")
+        // .nonactivatingPanel 只能在 init 时设：运行期改 styleMask 在部分 macOS 上
+        // 不会同步更新 WindowServer 的窗口标签，会出现「看起来是 key、实际收不到按键」。
+        var styleMask: NSWindow.StyleMask = [.borderless, .fullSizeContentView]
+        if onFullScreenSpace { styleMask.insert(.nonactivatingPanel) }
         let p = ScreenshotOverlayPanel(
             contentRect: screen.frame,
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: styleMask,
             backing: .buffered,
             defer: false,
             screen: screen
@@ -115,7 +142,16 @@ final class ScreenshotOverlayController {
         p.hasShadow = false
         p.isOpaque = false
         p.ignoresMouseEvents = false
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        if onFullScreenSpace {
+            // 跨 App 全屏 Space 的浮层：非激活面板 + Apple DTS 推荐的组合。
+            // canJoinAllApplications 负责跨进别的 App 的 Space，
+            // fullScreenAuxiliary 负责叠在全屏内容之上，screenSaver level 保证在最顶层。
+            p.isFloatingPanel = true
+            p.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications,
+                                    .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        } else {
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        }
         p.isMovable = false
         p.hidesOnDeactivate = false
         p.becomesKeyOnlyIfNeeded = false
@@ -135,13 +171,30 @@ final class ScreenshotOverlayController {
         p.setFrame(screen.frame, display: true)
         host.view.frame = p.contentView?.bounds ?? screen.frame
         host.view.autoresizingMask = [.width, .height]
-        // 应用窗口已 orderOut，需重新激活应用让 panel 成为 key window 接收鼠标事件
-        NSApp.activate(ignoringOtherApps: true)
-        p.makeKeyAndOrderFront(nil)
-        p.orderFrontRegardless()
-        // 确认 panel 成为 key
-        p.makeKey()
-        p.orderFrontRegardless()
+        if onFullScreenSpace {
+            // 关键：绝不调用 NSApp.activate。常规 App 被激活时 macOS 会离开当前全屏 Space，
+            // 把用户甩到桌面（或为它新建一个 Space），覆盖层就跑到另一个界面上了。
+            // 非激活面板由 WindowServer 以「key focus theft」方式直接拿到键盘事件，
+            // 全屏目标 App 仍是 frontmost，Space 原地不动。
+            p.orderFrontRegardless()
+            p.makeKey()
+            p.orderFrontRegardless()
+            ScreenshotLogger.log("overlay show() fullscreen-space: no activation, isKey=\(p.isKeyWindow) isActive=\(NSApp.isActive)")
+            // 面板刚上屏时可能还没完成 key focus 交接，补一次保险
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak p] in
+                guard let p, p.isVisible, !p.isKeyWindow else { return }
+                p.makeKey()
+                ScreenshotLogger.log("overlay show() fullscreen-space retry makeKey, isKey=\(p.isKeyWindow)")
+            }
+        } else {
+            // 应用窗口已 orderOut，需重新激活应用让 panel 成为 key window 接收鼠标事件
+            NSApp.activate(ignoringOtherApps: true)
+            p.makeKeyAndOrderFront(nil)
+            p.orderFrontRegardless()
+            // 确认 panel 成为 key
+            p.makeKey()
+            p.orderFrontRegardless()
+        }
         ScreenshotLogger.log("overlay show() panel created isVisible=\(p.isVisible) frame=\(p.frame)")
         panel = p
     }
@@ -163,7 +216,19 @@ final class ScreenshotOverlayController {
     }
 
     private func restoreAppWindows() {
-        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count) prevApp=\(previousFrontApp?.localizedName ?? "nil")")
+        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count) onFullScreenSpace=\(onFullScreenSpace) prevApp=\(previousFrontApp?.localizedName ?? "nil")")
+        if onFullScreenSpace {
+            // 覆盖层没抢前台、也没隐藏窗口，正常情况下什么都不用做。
+            // 例外：保存对话框 / 失败弹窗期间系统把本应用激活了 → 把焦点还给原全屏应用。
+            if NSApp.isActive, let prev = previousFrontApp, !prev.isTerminated {
+                prev.activate()
+                ScreenshotLogger.log("restoreAppWindows() 归还焦点给全屏应用 \(prev.localizedName ?? "?")")
+            }
+            hiddenWindows = []
+            previousFrontApp = nil
+            onFullScreenSpace = false
+            return
+        }
         for window in hiddenWindows {
             // 仅恢复可见性，不打乱窗口 Z 轴顺序
             window.setIsVisible(true)

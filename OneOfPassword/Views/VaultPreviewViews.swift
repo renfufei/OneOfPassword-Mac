@@ -56,6 +56,7 @@ struct VaultItemPreviewView: View {
             .safeAreaInset(edge: .top) { Color.clear.frame(height: 20) }
             timestampSection
         }
+        .copyBadgeOverlay()
         .navigationTitle(item.title)
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -130,9 +131,6 @@ struct VaultItemPreviewView: View {
                 Spacer()
                 HStack(spacing: 4) {
                     Text(currentItem.username).textSelection(.enabled)
-                    if usernameCopied {
-                        Text("已复制").font(.caption).foregroundColor(.green)
-                    }
                     IconBtn(icon: usernameCopied ? "checkmark" : "doc.on.doc",
                             tint: usernameCopied ? .green : .secondary) {
                         ClipboardManager.shared.copy(currentItem.username)
@@ -142,6 +140,7 @@ struct VaultItemPreviewView: View {
                     .help("复制用户名")
                 }
             }
+            .copyBadgeAnchor(usernameCopied)
             .contentShape(Rectangle())
             .onTapGesture {
                 ClipboardManager.shared.copy(currentItem.username)
@@ -183,9 +182,6 @@ struct VaultItemPreviewView: View {
                     IconBtn(icon: showPassword ? "eye.slash" : "eye", tint: .secondary) {
                         showPassword.toggle()
                     }
-                    if pwCopied {
-                        Text("已复制").font(.caption).foregroundColor(.green)
-                    }
                     IconBtn(icon: pwCopied ? "checkmark" : "doc.on.doc",
                             tint: pwCopied ? .green : .secondary) {
                         if let pw = vm.getPassword(for: currentItem) { ClipboardManager.shared.copy(pw) }
@@ -195,6 +191,7 @@ struct VaultItemPreviewView: View {
                     .help("复制密码")
                 }
             }
+            .copyBadgeAnchor(pwCopied)
             .contentShape(Rectangle())
             .onTapGesture {
                 if let pw = vm.getPassword(for: currentItem) { ClipboardManager.shared.copy(pw) }
@@ -302,9 +299,6 @@ private struct TOTPLiveRow: View {
                 Text(formatCode(code))
                     .font(.system(size: 28, weight: .semibold, design: .monospaced))
                     .foregroundColor(.primary)
-                if codeCopied {
-                    Text("已复制").font(.caption).foregroundColor(.green)
-                }
                 IconBtn(icon: codeCopied ? "checkmark" : "doc.on.doc",
                         tint: codeCopied ? .green : .secondary) {
                     ClipboardManager.shared.copy(code)
@@ -313,6 +307,7 @@ private struct TOTPLiveRow: View {
                 }
             }
         }
+        .copyBadgeAnchor(codeCopied)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -372,9 +367,6 @@ private struct ExtraTOTPLiveRow: View {
                 Text(formatCode(code))
                     .font(.system(size: 28, weight: .semibold, design: .monospaced))
                     .foregroundColor(.primary)
-                if codeCopied {
-                    Text("已复制").font(.caption).foregroundColor(.green)
-                }
                 IconBtn(icon: codeCopied ? "checkmark" : "doc.on.doc",
                         tint: codeCopied ? .green : .secondary) {
                     ClipboardManager.shared.copy(code)
@@ -383,6 +375,7 @@ private struct ExtraTOTPLiveRow: View {
                 }
             }
         }
+        .copyBadgeAnchor(codeCopied)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -431,9 +424,6 @@ private struct ExtraPasswordLiveRow: View {
                 IconBtn(icon: revealed ? "eye.slash" : "eye", tint: .secondary) {
                     revealed.toggle()
                 }
-                if copied {
-                    Text("已复制").font(.caption).foregroundColor(.green)
-                }
                 IconBtn(icon: copied ? "checkmark" : "doc.on.doc",
                         tint: copied ? .green : .secondary) {
                     ClipboardManager.shared.copy(password)
@@ -443,6 +433,7 @@ private struct ExtraPasswordLiveRow: View {
                 .help("复制密码")
             }
         }
+        .copyBadgeAnchor(copied)
         .contentShape(Rectangle())
         .onTapGesture {
             ClipboardManager.shared.copy(password)
@@ -509,9 +500,6 @@ private struct CustomFieldInlineRow: View {
                     Text(field.value)
                         .textSelection(.enabled)
                 }
-                if copied {
-                    Text("已复制").font(.caption).foregroundColor(.green)
-                }
                 IconBtn(icon: copied ? "checkmark" : "doc.on.doc",
                         tint: copied ? .green : .secondary) {
                     if let v = getValue() { ClipboardManager.shared.copy(v) }
@@ -520,6 +508,7 @@ private struct CustomFieldInlineRow: View {
                 }
                 .help("复制")
             }
+            .copyBadgeAnchor(copied)
         }
     }
 }
@@ -606,6 +595,65 @@ struct VaultNoteEditorSheet: View {
 }
 
 // MARK: - 辅助组件
+
+// MARK: 复制成功浮动提示
+
+/// 「已复制」以前是 HStack 的子视图：一出现就多占一份宽度，Spacer 重算后
+/// 把同排的验证码 / 密码 / 用户名往左推，肉眼看到「内容跳位」。
+///
+/// 现在分两层：行内只上报一个「复制按钮所在位置」的锚点（不渲染任何东西、
+/// 不占布局空间），真正的胶囊画在预览面板层的 `copyBadgeOverlay()`。
+/// 之所以不能直接把 overlay 挂在行上：**macOS 的 Form 行会把超出行边界的
+/// overlay 裁掉**，`offset(y: -26)` 的浮层只剩半截（已用同结构探针验证）。
+/// `fixedSize()` 保证徽标按内容取宽、不被面板宽度拉伸。
+private struct CopiedBadge: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+            Text("已复制").lineLimit(1)
+        }
+        .font(.caption)
+        .foregroundColor(.green)
+        .fixedSize()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Color(NSColor.windowBackgroundColor)))
+        .overlay(Capsule().stroke(Color.green.opacity(0.35), lineWidth: 1))
+        .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
+    }
+}
+
+/// 同一时刻只保留一个锚点：连点两行时提示跟着最后一次复制走，不会叠出两个胶囊。
+private struct CopyBadgeAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGPoint>? = nil
+    static func reduce(value: inout Anchor<CGPoint>?, nextValue: () -> Anchor<CGPoint>?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
+private extension View {
+    /// 挂在「整行」上，只上报行尾（复制按钮）的锚点；不渲染、不参与布局。
+    func copyBadgeAnchor(_ copied: Bool) -> some View {
+        anchorPreference(key: CopyBadgeAnchorKey.self, value: .trailing) { copied ? $0 : nil }
+    }
+
+    /// 挂在预览面板最外层。面板层不会被 Form 行裁剪，浮层可以完整盖在行上方。
+    /// `allowsHitTesting(false)` 保证整层不挡住下面的复制按钮 / 整行点击。
+    func copyBadgeOverlay() -> some View {
+        overlayPreferenceValue(CopyBadgeAnchorKey.self) { anchor in
+            GeometryReader { proxy in
+                if let a = anchor {
+                    let p = proxy[a]
+                    CopiedBadge()
+                        .position(x: p.x - 15, y: p.y - 28)
+                        .transition(.opacity)
+                }
+            }
+            .allowsHitTesting(false)
+            .animation(.easeOut(duration: 0.16), value: anchor != nil)
+        }
+    }
+}
 
 struct LabeledRow: View {
     let label: String

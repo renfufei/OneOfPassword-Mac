@@ -221,6 +221,9 @@ enum ScreenshotCaptureService {
         let rep = NSBitmapImageRep(cgImage: image)
         guard let png = rep.representation(using: .png, properties: [:]) else { return }
 
+        // 全屏 Space 的覆盖层刻意不激活本应用；保存对话框仍需本应用在前台才可靠置前。
+        // 对话框结束后由 restoreAppWindows() 把焦点还给原全屏应用。
+        if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "截屏 \(timestamp()).png"
@@ -290,6 +293,66 @@ enum ScreenshotCaptureService {
         }
         ScreenshotLogger.log("windowAtMouse no match, mouse=\(mouse) count=\(infos.count)")
         return nil
+    }
+
+    // MARK: - 原生全屏 Space 识别
+
+    /// 当前活动 Space 是否为「原生全屏 Space」（另一个 App 独占一块屏幕）。
+    ///
+    /// 判据：原生全屏窗口会铺满 **整块屏幕**（CGDisplayBounds，含菜单栏区域）；
+    /// 普通的「最大化」窗口只覆盖 visibleFrame（不含菜单栏），不会命中。
+    /// 另外本应用自身窗口进入原生全屏时，styleMask 会带 `.fullScreen`，也直接算命中。
+    ///
+    /// 必须在隐藏窗口 / 激活应用之前调用。误判成 true 只会走「非激活覆盖层」流程
+    /// （不抢前台、不切 Space），在普通桌面上同样可用，所以代价很低。
+    /// 纯几何判定：窗口 bounds 是否恰好铺满某一块屏幕（原生全屏的特征）。
+    /// 抽成纯函数便于离线逐值校验；普通「最大化」窗口只覆盖 visibleFrame，高度明显小于屏幕。
+    static func coversFullDisplay(_ r: CGRect, displays: [CGRect], tolerance: CGFloat = 2) -> Bool {
+        displays.contains { d in
+            abs(r.minX - d.minX) <= tolerance
+                && abs(r.minY - d.minY) <= tolerance
+                && abs(r.width - d.width) <= tolerance
+                && abs(r.height - d.height) <= tolerance
+        }
+    }
+
+    static func isFullScreenSpaceActive() -> Bool {
+        // 必须是「前台是本应用」才算：否则可能只是本应用在另一个 Space 上留了一个全屏窗口，
+        // 当前活动桌面其实是普通的，那种情况仍需要走隐藏窗口的老流程。
+        if NSApp.isActive,
+           NSApp.windows.contains(where: { $0.isVisible && $0.styleMask.contains(.fullScreen) }) {
+            ScreenshotLogger.log("isFullScreenSpaceActive=true (本应用窗口处于原生全屏)")
+            return true
+        }
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.bundleIdentifier != Bundle.main.bundleIdentifier,
+              let infos = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+              ) as? [[String: Any]] else { return false }
+
+        let displays: [CGRect] = NSScreen.screens.compactMap { screen in
+            guard let id = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")
+            ] as? CGDirectDisplayID else { return nil }
+            return CGDisplayBounds(id)
+        }
+        guard !displays.isEmpty else { return false }
+
+        let pid = Int(front.processIdentifier)
+        for info in infos {
+            guard let owner = info[kCGWindowOwnerPID as String] as? Int, owner == pid,
+                  let b = info[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
+            let alpha = info[kCGWindowAlpha as String] as? CGFloat ?? 1
+            guard alpha > 0.01 else { continue }
+            let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0,
+                           width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+            if coversFullDisplay(r, displays: displays) {
+                ScreenshotLogger.log("isFullScreenSpaceActive=true front=\(front.localizedName ?? "?") rect=\(r) displays=\(displays)")
+                return true
+            }
+        }
+        ScreenshotLogger.log("isFullScreenSpaceActive=false front=\(front.localizedName ?? "?") windows=\(infos.count)")
+        return false
     }
 
     private static func timestamp() -> String {
