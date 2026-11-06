@@ -1,6 +1,6 @@
 # OneOfPassword for Mac
 
-原生 macOS 密码与两步验证管理应用，使用 Swift + SwiftUI 开发。当前版本：**1.72**
+原生 macOS 密码与两步验证管理应用，使用 Swift + SwiftUI 开发。当前版本：**1.73**
 
 ---
 
