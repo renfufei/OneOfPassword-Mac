@@ -25,19 +25,25 @@ final class ScreenshotOverlayController {
 
     private var panel: NSPanel?
     /// 本次截屏是否发生在「原生全屏 Space」上。
-    /// 全屏 Space 由别的 App 独占，本应用一旦 activate，macOS 就会离开该 Space
-    /// （甩回桌面、甚至新建一个 Space），覆盖层因此出现在错误的界面上。
-    /// 该标志决定覆盖层走「非激活面板」还是原来的「激活应用」流程。
+    /// 覆盖层已统一走「非激活面板」流程（任何场景都不激活本应用、不切 Space），
+    /// 该标志现在只决定 autoHide 是否必要：全屏 Space 上本应用窗口不在当前 Space，
+    /// 不会进快照，无需隐藏。
     private var onFullScreenSpace = false
     /// 覆盖层显示前抓取的全屏快照
     private var snapshot: CGImage?
     /// 截屏前隐藏的应用窗口（恢复时用），按 Z 轴顺序保存
     private var hiddenWindows: [NSWindow] = []
-    /// 截屏前的前台应用（若非本应用）。普通桌面流程会激活本应用，恢复时必须把焦点还回去；
-    /// 全屏 Space 流程不激活本应用，只在保存对话框/弹窗意外激活后用它归还焦点。
+    /// 截屏前的前台应用（若非本应用）。非激活流程下本应用全程不抢前台；
+    /// 仅当保存对话框 / 失败弹窗把本应用激活后，用它归还焦点（并切回原 Space）。
     private var previousFrontApp: NSRunningApplication?
     /// autoWindow 开启时，在隐藏本应用窗口之前识别出的鼠标所在窗口 rect
     private var pendingPreferredRect: CGRect?
+    /// 保存面板（系统 NSSavePanel，以 sheet 形式挂在覆盖层上）。
+    /// 不能 `runModal()`：那会激活本应用 → 切走 Space → 保存框跑到默认桌面。
+    /// sheet 跟随父窗口，只出现在用户当前所在的 Space，键盘由 sheet 自己接管。
+    private var savePanel: NSSavePanel?
+    /// 已合成好、等用户确认保存位置的图片
+    private var pendingImage: CGImage?
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -79,17 +85,21 @@ final class ScreenshotOverlayController {
         pendingPreferredRect = autoWindow ? ScreenshotCaptureService.windowAtMouse() : nil
         ScreenshotLogger.log("overlay show() pendingPreferredRect=\(String(describing: pendingPreferredRect))")
 
+        // 统一记录前台应用：非激活流程下本应用全程不抢前台，焦点天然不动；
+        // 只有保存对话框 / 失败弹窗把本应用带前台时，才用它归还焦点。
+        let front = NSWorkspace.shared.frontmostApplication
+        previousFrontApp = front?.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : front
+
         if onFullScreenSpace {
             // 目标独占一个全屏 Space：本应用窗口在别的 Space，本来就不会进快照，
-            // 因此既不隐藏也不恢复窗口；更重要的是全程不激活本应用，避免 Space 被切换。
-            let front = NSWorkspace.shared.frontmostApplication
-            previousFrontApp = front?.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : front
+            // 因此不隐藏也不恢复窗口。
             hiddenWindows = []
             captureAndShowPanel()
             return
         }
 
-        // 自动隐藏本应用窗口（默认开启），避免快照里截到应用自身
+        // 自动隐藏本应用窗口（默认开启），避免快照里截到应用自身。
+        // orderOut 只影响窗口可见性，不抢前台、不切 Space。
         let autoHide = UserDefaults.standard.object(forKey: "screenshotAutoHide") as? Bool ?? true
         if autoHide {
             hideAppWindows()
@@ -126,13 +136,13 @@ final class ScreenshotOverlayController {
             return
         }
         ScreenshotLogger.log("overlay show() creating panel on screen \(screen.frame) onFullScreenSpace=\(onFullScreenSpace)")
+        // 面板恒为「非激活面板」：不激活本应用也能成为 key window 接收鼠标/键盘
+        //（WindowServer 的 key focus theft）。
         // .nonactivatingPanel 只能在 init 时设：运行期改 styleMask 在部分 macOS 上
         // 不会同步更新 WindowServer 的窗口标签，会出现「看起来是 key、实际收不到按键」。
-        var styleMask: NSWindow.StyleMask = [.borderless, .fullSizeContentView]
-        if onFullScreenSpace { styleMask.insert(.nonactivatingPanel) }
         let p = ScreenshotOverlayPanel(
             contentRect: screen.frame,
-            styleMask: styleMask,
+            styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false,
             screen: screen
@@ -142,16 +152,13 @@ final class ScreenshotOverlayController {
         p.hasShadow = false
         p.isOpaque = false
         p.ignoresMouseEvents = false
-        if onFullScreenSpace {
-            // 跨 App 全屏 Space 的浮层：非激活面板 + Apple DTS 推荐的组合。
-            // canJoinAllApplications 负责跨进别的 App 的 Space，
-            // fullScreenAuxiliary 负责叠在全屏内容之上，screenSaver level 保证在最顶层。
-            p.isFloatingPanel = true
-            p.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications,
-                                    .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        } else {
-            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        }
+        // Apple DTS 推荐的跨 App 浮层组合（所有场景统一）：
+        // canJoinAllSpaces + canJoinAllApplications 让面板出现在「用户当前所在的 Space」
+        //（普通桌面 / 最大化窗口所在 Space / 原生全屏 Space 都成立）；
+        // fullScreenAuxiliary 允许叠在全屏内容之上；screenSaver level 保证最顶层。
+        p.isFloatingPanel = true
+        p.collectionBehavior = [.canJoinAllSpaces, .canJoinAllApplications,
+                                .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.isMovable = false
         p.hidesOnDeactivate = false
         p.becomesKeyOnlyIfNeeded = false
@@ -171,29 +178,21 @@ final class ScreenshotOverlayController {
         p.setFrame(screen.frame, display: true)
         host.view.frame = p.contentView?.bounds ?? screen.frame
         host.view.autoresizingMask = [.width, .height]
-        if onFullScreenSpace {
-            // 关键：绝不调用 NSApp.activate。常规 App 被激活时 macOS 会离开当前全屏 Space，
-            // 把用户甩到桌面（或为它新建一个 Space），覆盖层就跑到另一个界面上了。
-            // 非激活面板由 WindowServer 以「key focus theft」方式直接拿到键盘事件，
-            // 全屏目标 App 仍是 frontmost，Space 原地不动。
-            p.orderFrontRegardless()
+        // 关键：全程不调用 NSApp.activate。常规 App 被激活时 macOS 会切换 Space
+        //（把用户甩到本应用窗口所在的桌面，甚至为它新建一个 Space），
+        // 覆盖层就出现在另一个界面上 —— 这正是「最大化窗口按 F2 无反应、
+        // 要左滑才能找到截屏层」的根因。
+        // 非激活面板由 WindowServer 以「key focus theft」方式直接拿到键盘事件，
+        // 目标 App 保持 frontmost，Space 原地不动。
+        p.orderFrontRegardless()
+        p.makeKey()
+        p.orderFrontRegardless()
+        ScreenshotLogger.log("overlay show() non-activating: isKey=\(p.isKeyWindow) isActive=\(NSApp.isActive)")
+        // 面板刚上屏时可能还没完成 key focus 交接，补一次保险
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak p] in
+            guard let p, p.isVisible, !p.isKeyWindow else { return }
             p.makeKey()
-            p.orderFrontRegardless()
-            ScreenshotLogger.log("overlay show() fullscreen-space: no activation, isKey=\(p.isKeyWindow) isActive=\(NSApp.isActive)")
-            // 面板刚上屏时可能还没完成 key focus 交接，补一次保险
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak p] in
-                guard let p, p.isVisible, !p.isKeyWindow else { return }
-                p.makeKey()
-                ScreenshotLogger.log("overlay show() fullscreen-space retry makeKey, isKey=\(p.isKeyWindow)")
-            }
-        } else {
-            // 应用窗口已 orderOut，需重新激活应用让 panel 成为 key window 接收鼠标事件
-            NSApp.activate(ignoringOtherApps: true)
-            p.makeKeyAndOrderFront(nil)
-            p.orderFrontRegardless()
-            // 确认 panel 成为 key
-            p.makeKey()
-            p.orderFrontRegardless()
+            ScreenshotLogger.log("overlay show() retry makeKey, isKey=\(p.isKeyWindow)")
         }
         ScreenshotLogger.log("overlay show() panel created isVisible=\(p.isVisible) frame=\(p.frame)")
         panel = p
@@ -203,11 +202,9 @@ final class ScreenshotOverlayController {
 
     private func hideAppWindows() {
         ScreenshotLogger.log("hideAppWindows()")
-        // 记录当前桌面的前台应用：若不由本应用占据，恢复时需把焦点还给它
-        let front = NSWorkspace.shared.frontmostApplication
-        let isSelf = front?.bundleIdentifier == Bundle.main.bundleIdentifier
-        previousFrontApp = isSelf ? nil : front
-        ScreenshotLogger.log("hideAppWindows() frontmost=\(front?.localizedName ?? "nil") isSelf=\(isSelf) 需归还焦点=\(previousFrontApp != nil)")
+        // 前台应用已在 show() 开头统一记录（previousFrontApp），这里只负责隐藏窗口。
+        // orderOut 只影响窗口可见性，不抢前台、不切 Space。
+        ScreenshotLogger.log("hideAppWindows() frontmost=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")")
         hiddenWindows = []
         for window in NSApp.windows where window.isVisible && !(window is NSPanel) {
             hiddenWindows.append(window)
@@ -216,34 +213,23 @@ final class ScreenshotOverlayController {
     }
 
     private func restoreAppWindows() {
-        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count) onFullScreenSpace=\(onFullScreenSpace) prevApp=\(previousFrontApp?.localizedName ?? "nil")")
-        if onFullScreenSpace {
-            // 覆盖层没抢前台、也没隐藏窗口，正常情况下什么都不用做。
-            // 例外：保存对话框 / 失败弹窗期间系统把本应用激活了 → 把焦点还给原全屏应用。
-            if NSApp.isActive, let prev = previousFrontApp, !prev.isTerminated {
-                prev.activate()
-                ScreenshotLogger.log("restoreAppWindows() 归还焦点给全屏应用 \(prev.localizedName ?? "?")")
-            }
-            hiddenWindows = []
-            previousFrontApp = nil
-            onFullScreenSpace = false
-            return
-        }
+        ScreenshotLogger.log("restoreAppWindows() count=\(hiddenWindows.count) prevApp=\(previousFrontApp?.localizedName ?? "nil")")
         for window in hiddenWindows {
             // 仅恢复可见性，不打乱窗口 Z 轴顺序
             window.setIsVisible(true)
         }
         hiddenWindows = []
-        // 覆盖层显示期间本应用被 activate 成前台；若截屏前焦点在别的应用，
-        // 必须主动把那个应用重新激活，否则本应用会一直赖在最前面。
-        if let prev = previousFrontApp, !prev.isTerminated {
+        // 非激活流程下本应用从未抢前台，焦点天然留在目标应用 —— 什么都不用做。
+        // 例外：保存对话框 / 失败弹窗把本应用激活了 → 把焦点还给原来的前台应用，
+        // 让 macOS 切回用户截屏前所在的 Space。
+        if NSApp.isActive, let prev = previousFrontApp, !prev.isTerminated {
             let ok = prev.activate()
             ScreenshotLogger.log("restoreAppWindows() 归还焦点给 \(prev.localizedName ?? "?") ok=\(ok)")
         } else {
-            NSApp.activate(ignoringOtherApps: false)
-            ScreenshotLogger.log("restoreAppWindows() 保持本应用前台")
+            ScreenshotLogger.log("restoreAppWindows() 本应用未激活，焦点保持在目标应用")
         }
         previousFrontApp = nil
+        onFullScreenSpace = false
     }
 
     /// 从快照裁剪选区 + 合成标注，不再调截图 API。
@@ -290,26 +276,118 @@ final class ScreenshotOverlayController {
         // 先只关 panel，把「恢复主窗口 + 归还焦点」放到最后：
         // 保存对话框期间主窗口保持隐藏，避免还在选保存位置时界面就跳回最前；
         // 复制到剪贴板则立刻恢复。
-        closePanel()
         if saveToFile {
-            ScreenshotCaptureService.savePanel(image: out)
-        } else {
-            ScreenshotCaptureService.copyToPasteboard(image: out)
+            // 暂存合成结果，弹出系统保存框（sheet 挂在覆盖层上）。
+            // 覆盖层在这期间保持显示：用户点「取消」还能继续标注，不必重新截图。
+            pendingImage = out
+            ScreenshotLogger.log("captureAndSave 弹出保存面板 size=\(out.width)x\(out.height)")
+            presentSaveSheet()
+            return
         }
+        closePanel()
+        ScreenshotCaptureService.copyToPasteboard(image: out)
         restoreAppWindows()
     }
 
     /// 仅关闭覆盖层 panel，不恢复主窗口。
-    /// 保存流程会先把 panel 关掉、弹出保存对话框，等用户选完再 restoreAppWindows，
-    /// 避免「刚弹出保存框，主窗口就先跳回最前」。
     private func closePanel() {
+        // 保存面板还挂着就先摘掉（endSheet 会触发完成回调，那里 savePanel 已置空，不会重复收尾）
+        if let sp = savePanel, let p = panel {
+            savePanel = nil
+            p.endSheet(sp)
+        }
         panel?.orderOut(nil)
         panel = nil
         snapshot = nil
     }
 
+    // MARK: - 保存面板（系统 NSSavePanel）
+
+    /// 弹出系统保存面板，**以 sheet 形式挂在覆盖层 panel 上**。
+    ///
+    /// 这是「既能用原生保存框、又不切 Space」的唯一组合：
+    /// - 不用 `runModal()`：那需要应用激活，激活即切 Space，保存框落到默认桌面（老 bug）；
+    /// - 作为 sheet 时，面板与父窗口一起出现在当前 Space，且 `firstResponder` 是
+    ///   `openAndSavePanelService` 的远程视图 → 文件名输入、回车保存、Esc 取消全部照常。
+    private func presentSaveSheet() {
+        guard let p = panel, savePanel == nil else {
+            ScreenshotLogger.log("presentSaveSheet 跳过：panel=\(panel != nil) 已有保存面板=\(savePanel != nil)")
+            return
+        }
+        let sp = NSSavePanel()
+        sp.allowedContentTypes = [.png]
+        sp.allowsOtherFileTypes = false
+        sp.canCreateDirectories = true
+        sp.isExtensionHidden = false
+        sp.title = "保存"
+        sp.prompt = "保存"
+        sp.nameFieldStringValue = ScreenshotCaptureService.suggestedFileName()
+        sp.directoryURL = ScreenshotCaptureService.lastSaveDirectory
+        savePanel = sp
+        // 面板必须是 key，sheet 才会立刻拿到键盘（正常流程里它一直是 key）
+        if !p.isKeyWindow { p.makeKey() }
+        ScreenshotLogger.log("presentSaveSheet begin dir=\(sp.directoryURL?.path ?? "nil") name=\(sp.nameFieldStringValue) appActive=\(NSApp.isActive) front=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil") panelIsKey=\(p.isKeyWindow)")
+        sp.beginSheetModal(for: p) { [weak self] response in
+            guard let self else { return }
+            self.savePanel = nil
+            ScreenshotLogger.log("presentSaveSheet completed response=\(response.rawValue) url=\(sp.url?.path ?? "nil") front=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")")
+            guard response == .OK, let url = sp.url else {
+                // 取消：留在截图界面继续标注（不丢标注、不用重截）
+                self.pendingImage = nil
+                p.makeKey()
+                ScreenshotLogger.log("presentSaveSheet 取消 → 回到截图, panelIsKey=\(p.isKeyWindow)")
+                return
+            }
+            self.finishSaving(to: url)
+        }
+    }
+
+    /// 用户在保存面板里确认：写 PNG → 关覆盖层 → 归还焦点。
+    /// 全程不激活本应用，Space 原地不动。
+    private func finishSaving(to url: URL) {
+        guard let img = pendingImage else {
+            ScreenshotLogger.log("finishSaving 无待写图片，直接收尾")
+            closePanel()
+            restoreAppWindows()
+            return
+        }
+        let ok = ScreenshotCaptureService.writePNG(image: img, to: url)
+        ScreenshotLogger.log("finishSaving url=\(url.path) ok=\(ok)")
+        guard ok else {
+            // 写失败（目录不可写等）：再弹一次保存面板，让用户换位置/文件名
+            presentWriteFailureAlert(url: url)
+            return
+        }
+        pendingImage = nil
+        ScreenshotCaptureService.rememberSaveDirectory(of: url)
+        closePanel()
+        restoreAppWindows()
+    }
+
+    /// 写文件失败的提示。同样必须走 sheet（NSAlert + runModal 会激活应用、切走 Space）。
+    private func presentWriteFailureAlert(url: URL) {
+        guard let p = panel else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "保存失败"
+        alert.informativeText = "无法写入「\(url.lastPathComponent)」，请选择其他位置或文件名。"
+        alert.addButton(withTitle: "重新选择")
+        alert.addButton(withTitle: "取消")
+        alert.beginSheetModal(for: p) { [weak self] resp in
+            guard let self else { return }
+            ScreenshotLogger.log("presentWriteFailureAlert resp=\(resp.rawValue)")
+            if resp == .alertFirstButtonReturn {
+                self.presentSaveSheet()
+            } else {
+                self.pendingImage = nil
+                p.makeKey()
+            }
+        }
+    }
+
     func dismiss() {
         ScreenshotLogger.log("overlay dismiss() called, panel exists=\(panel != nil)")
+        pendingImage = nil
         closePanel()
         restoreAppWindows()
     }

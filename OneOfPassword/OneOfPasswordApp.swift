@@ -44,6 +44,13 @@ struct OneOfPasswordApp: App {
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
             }
+
+            // 「帮助」菜单：替换系统默认帮助项，放一条项目主页入口
+            CommandGroup(replacing: .help) {
+                Button("GitHub 项目首页") {
+                    AppLinks.openGitHubHomepage()
+                }
+            }
         }
 
         // ⌘, 打开设置窗口

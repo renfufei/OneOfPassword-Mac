@@ -44,6 +44,9 @@ struct ScreenshotOverlayView: View {
 
     @StateObject private var state = OverlayState()
     @State private var keyMonitor: Any?
+    /// 拖动开始时工具栏已有的偏移快照：每帧都用「起始偏移 + 本次位移」重算，
+    /// 避免在上一帧结果上累加导致漂移。
+    @State private var toolbarDragStart: CGSize?
 
     var body: some View {
         GeometryReader { geo in
@@ -93,6 +96,21 @@ struct ScreenshotOverlayView: View {
                         onDelete: { deleteSelectedShape() },
                         onCancel: { onDismiss() }
                     )
+                    // 拖动热区：background 覆盖控件之间的空白（间距 / 内边距），
+                    // 顶部再叠一条 6pt 边缘条（正好落在工具栏自身的 vertical padding 内，
+                    // 不压任何控件）。这样既不会「拖线宽滑杆时把整条工具栏带走」，
+                    // 又有一个稳定好抓的拖动位置。
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .gesture(toolbarDragGesture)
+                    )
+                    .overlay(alignment: .top) {
+                        Color.clear
+                            .frame(height: 6)
+                            .contentShape(Rectangle())
+                            .gesture(toolbarDragGesture)
+                    }
                     .position(x: toolbarPosition.x, y: toolbarPosition.y)
                 }
             }
@@ -110,6 +128,9 @@ struct ScreenshotOverlayView: View {
         .onAppear {
             initSelection()
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                // 系统保存面板（sheet）在前：键盘一律交还它自己处理。
+                // 否则这里的 Esc 会把整个截屏关掉、Delete 会去删标注，而文件名输入却收不到字。
+                if NSApp.keyWindow is NSSavePanel { return event }
                 // 文本编辑中：Delete / 退格 / 方向键等一律交给 TextField，
                 // 否则删字会变成删掉整个标注框。
                 let editingText = (state.editingTextIndex != nil)
@@ -175,24 +196,26 @@ struct ScreenshotOverlayView: View {
     }
 
     private func initSelection() {
-        guard let screen = NSScreen.main else { return }
-        let screenW = screen.frame.width
-        let screenH = screen.frame.height
+        guard NSScreen.main != nil else { return }
+        let area = usableArea
         // 优先级：autoWindow 识别的窗口 > 上次框选 > 默认中央 60%
-        let defaultW = screenW * 0.6
-        let defaultH = screenH * 0.6
-        let defaultRect = CGRect(x: (screenW - defaultW) / 2,
-                                 y: (screenH - defaultH) / 2,
+        let defaultW = area.width * 0.6
+        let defaultH = area.height * 0.6
+        let defaultRect = CGRect(x: area.midX - defaultW / 2,
+                                 y: area.midY - defaultH / 2,
                                  width: defaultW, height: defaultH)
-        let raw = preferredRect ?? ScreenshotCaptureService.loadLastSelection() ?? defaultRect
-        // 钳制到当前主屏范围（跨屏 / 分辨率变化时不致越界）
-        let w = min(max(raw.width, 20), screenW)
-        let h = min(max(raw.height, 20), screenH)
-        let x = min(max(raw.origin.x, 0), screenW - w)
-        let y = min(max(raw.origin.y, 0), screenH - h)
+        let lastRect = ScreenshotCaptureService.loadLastSelection()
+        let raw = preferredRect ?? lastRect ?? defaultRect
+        let source = preferredRect != nil ? "window" : (lastRect != nil ? "last" : "default")
+        // 钳制到可用区域（菜单栏以下、Dock 以上）。识别出的窗口矩形可能包含菜单栏，
+        // 也可能来自不同分辨率 / 屏幕，一律夹进来。
+        let w = min(max(raw.width, 20), area.width)
+        let h = min(max(raw.height, 20), area.height)
+        let x = min(max(raw.minX, area.minX), area.maxX - w)
+        let y = min(max(raw.minY, area.minY), area.maxY - h)
         state.selectionRect = CGRect(x: x, y: y, width: w, height: h)
         state.isRegionConfirmed = true
-        ScreenshotLogger.log("overlay initSelection source=\(preferredRect != nil ? "window" : (raw != defaultRect ? "last" : "default")) rect=\(state.selectionRect)")
+        ScreenshotLogger.log("overlay initSelection source=\(source) usable=\(area) rect=\(state.selectionRect)")
     }
 
     // MARK: - 蒙版（选区外半透明）
@@ -422,12 +445,14 @@ struct ScreenshotOverlayView: View {
 
     /// 由拖拽起止点构造归一化、并钳制在屏幕范围内的矩形。
     private func drawRect(from a: CGPoint, to b: CGPoint) -> CGRect {
-        let screen = NSScreen.main?.frame ?? .zero
-        let x = min(max(0, min(a.x, b.x)), max(0, screen.width - 1))
-        let y = min(max(0, min(a.y, b.y)), max(0, screen.height - 1))
-        let w = min(abs(a.x - b.x), screen.width - x)
-        let h = min(abs(a.y - b.y), screen.height - y)
-        return CGRect(x: x, y: y, width: w, height: h)
+        // 两端分别夹进可用区域，避免拖出屏幕/拖进菜单栏时产生负坐标或越界矩形
+        // （越界矩形会让 crop 拿到超出快照的 cropRect，直接崩）。
+        let area = usableArea
+        let x0 = min(max(area.minX, min(a.x, b.x)), area.maxX)
+        let y0 = min(max(area.minY, min(a.y, b.y)), area.maxY)
+        let x1 = min(max(area.minX, max(a.x, b.x)), area.maxX)
+        let y1 = min(max(area.minY, max(a.y, b.y)), area.maxY)
+        return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
     }
 
     /// 起始点是否落在任一边框容差带内（非纯内部）。
@@ -497,15 +522,32 @@ struct ScreenshotOverlayView: View {
         state.hoverCursor = nil
     }
 
-    /// 整体平移选区，受屏幕边界约束。
+    /// 允许框选的区域（覆盖层视图坐标，左上原点）。
+    /// **只把顶部菜单栏排除在外** —— 系统菜单栏压在最顶层、覆盖层盖不住，
+    /// 选区伸进去截出来是一条残破的菜单栏。
+    /// 左右 / 底部一律放开到屏幕边界：`visibleFrame` 还会扣掉 Dock 占的宽度
+    /// （Dock 在左侧时少 70pt、在底部时少 60pt），但覆盖层level 是 `.screenSaver`，
+    /// 盖得住 Dock，把 Dock 那块也纳入框选是合理且必要的。
+    private var usableArea: CGRect {
+        guard let screen = NSScreen.main else { return .zero }
+        let f = screen.frame
+        let vf = screen.visibleFrame
+        let menuBarHeight = max(0, f.height - (vf.maxY - f.minY))
+        return CGRect(x: 0,
+                      y: menuBarHeight,
+                      width: f.width,
+                      height: max(20, f.height - menuBarHeight))
+    }
+
+    /// 整体平移选区，受可用区域约束。
     private func applyMove(origin: CGPoint, dx: CGFloat, dy: CGFloat) {
         let nx = origin.x + dx
         let ny = origin.y + dy
-        let screen = NSScreen.main?.frame ?? .zero
+        let area = usableArea
         let r = state.selectionRect
         state.selectionRect.origin = CGPoint(
-            x: min(max(0, nx), screen.width - r.width),
-            y: min(max(0, ny), screen.height - r.height)
+            x: min(max(area.minX, nx), area.maxX - r.width),
+            y: min(max(area.minY, ny), area.maxY - r.height)
         )
     }
 
@@ -539,38 +581,59 @@ struct ScreenshotOverlayView: View {
     /// 坐标系：视图左上原点。origin.y 是顶边，origin.y+height 是底边。
     /// translation: dx 向右为正，dy 向下为正。
     private func applyResize(edge: ResizeEdge, orig: CGRect, dx: CGFloat, dy: CGFloat) {
+        let area = usableArea
+        // 先把位移量夹进可用区域：被拖的那条边不越界，另一条边保持不动
+        // （若直接夹结果矩形，拖顶边到底时整块会跟着跳）。
+        var ddx = dx
+        var ddy = dy
+        switch edge {
+        case .left, .topLeft, .bottomLeft:
+            ddx = max(ddx, area.minX - orig.minX)
+        case .right, .topRight, .bottomRight:
+            ddx = min(ddx, area.maxX - orig.maxX)
+        case .top, .bottom:
+            break
+        }
+        switch edge {
+        case .top, .topLeft, .topRight:
+            ddy = max(ddy, area.minY - orig.minY)
+        case .bottom, .bottomLeft, .bottomRight:
+            ddy = min(ddy, area.maxY - orig.maxY)
+        case .left, .right:
+            break
+        }
         var newRect = orig
         switch edge {
         case .left:
             // 左边移动：右边(maxX)不动，origin.x 变、width 反向
-            newRect.origin.x = orig.minX + dx
-            newRect.size.width = orig.width - dx
+            newRect.origin.x = orig.minX + ddx
+            newRect.size.width = orig.width - ddx
         case .right:
             // 右边移动：左边(minX)不动，width 变
-            newRect.size.width = orig.width + dx
+            newRect.size.width = orig.width + ddx
         case .top:
             // 顶边移动：底边(maxY)不动，向下拖 dy 正 → 顶边下移 → origin.y 变、height 反向
-            newRect.origin.y = orig.minY + dy
-            newRect.size.height = orig.height - dy
+            newRect.origin.y = orig.minY + ddy
+            newRect.size.height = orig.height - ddy
         case .bottom:
             // 底边移动：顶边(minY)不动，向下拖 dy 正 → 底边下移 → height 变
-            newRect.size.height = orig.height + dy
+            newRect.size.height = orig.height + ddy
         case .topLeft:
-            newRect.origin.x = orig.minX + dx
-            newRect.size.width = orig.width - dx
-            newRect.origin.y = orig.minY + dy
-            newRect.size.height = orig.height - dy
+            newRect.origin.x = orig.minX + ddx
+            newRect.size.width = orig.width - ddx
+            newRect.origin.y = orig.minY + ddy
+            newRect.size.height = orig.height - ddy
         case .topRight:
-            newRect.size.width = orig.width + dx
-            newRect.origin.y = orig.minY + dy
-            newRect.size.height = orig.height - dy
+            newRect.size.width = orig.width + ddx
+            newRect.origin.y = orig.minY + ddy
+            newRect.size.height = orig.height - ddy
         case .bottomLeft:
-            newRect.origin.x = orig.minX + dx
-            newRect.size.width = orig.width - dx
-            newRect.size.height = orig.height + dy
+            newRect.origin.x = orig.minX + ddx
+            newRect.size.width = orig.width - ddx
+            newRect.size.height = orig.height + ddy
         case .bottomRight:
-            newRect.size.width = orig.width + dx
-            newRect.size.height = orig.height + dy
+            newRect.size.width = orig.width + ddx
+            newRect.size.height = orig.height + ddy
         }
         if newRect.width >= 20 && newRect.height >= 20 {
             state.selectionRect = newRect
@@ -1031,37 +1094,81 @@ struct ScreenshotOverlayView: View {
 
     // MARK: - 工具栏位置
 
-    /// 工具栏**中心点**坐标。
-    /// `.position` 收的是中心坐标，所以钳制必须按半宽/半高算 ——
+    /// 手柄命中带的外扩量：15pt 容差 + 手柄半径，再留 4pt 余量。
+    /// 工具栏任何一条边都不得进入这条带，否则会压住角 / 边中点手柄，导致选区拖不动。
+    private static let toolbarHandleClearance: CGFloat = 22
+
+    /// 工具栏**中心点**坐标 = 自动基准位置 + 用户拖动偏移，再整体钳制在屏幕内。
+    /// `.position` 收的是中心坐标，所以钳制必须按半宽 / 半高算 ——
     /// 原先按整宽（且是硬编码的 380，而工具栏实测约 650）算，选区贴屏幕左右边时就会露出一截。
     private var toolbarPosition: CGPoint {
+        let base = toolbarBasePosition
+        return clampToolbarCenter(
+            CGPoint(x: base.x + state.toolbarDragOffset.width,
+                    y: base.y + state.toolbarDragOffset.height)
+        )
+    }
+
+    /// 自动摆放的基准位置（未叠加用户拖动）。
+    /// 优先级：选区上方 → 选区下方 → 选区内部靠顶。
+    /// 前两种要求整条工具栏落在选区之外，且与选区边界留出 `toolbarHandleClearance`，
+    /// 保证不压住 8 个缩放手柄；两者都放不下时（最大化窗口 / 选区铺满整屏）
+    /// 才浮到选区内部顶部 —— 允许盖住画面内容，但不碰顶部那三个手柄。
+    private var toolbarBasePosition: CGPoint {
         let r = state.selectionRect
         let screenW = NSScreen.main?.frame.width ?? 1000
         let screenH = NSScreen.main?.frame.height ?? 800
         let size = state.toolbarSize
         let halfW = size.width / 2
         let halfH = size.height / 2
-        let gap: CGFloat = 12
-
-        // 优先放选区上方；上方放不下（贴着屏幕上边）就翻到下方
-        let y = (r.minY - size.height - gap > 0) ? r.minY - halfH - gap
-                                                 : r.maxY + halfH + gap
+        let clearance = Self.toolbarHandleClearance
 
         // 工具栏比屏幕还宽时可用区间为空，退化为居中 —— 至少能操作，不至于整条推出屏幕
-        let x: CGFloat
-        if size.width >= screenW {
-            x = screenW / 2
-        } else {
-            x = min(max(r.midX, halfW), screenW - halfW)
-        }
+        let x: CGFloat = size.width >= screenW ? screenW / 2
+                                                : min(max(r.midX, halfW), screenW - halfW)
 
-        let clampedY: CGFloat
-        if size.height >= screenH {
-            clampedY = screenH / 2
-        } else {
-            clampedY = min(max(y, halfH), screenH - halfH)
+        // ① 选区上方：整条工具栏 + 手柄余量都放得下
+        let aboveCenter = r.minY - clearance - halfH
+        if aboveCenter - halfH >= 0 {
+            return CGPoint(x: x, y: aboveCenter)
         }
-        return CGPoint(x: x, y: clampedY)
+        // ② 选区下方：同理
+        let belowCenter = r.maxY + clearance + halfH
+        if belowCenter + halfH <= screenH {
+            return CGPoint(x: x, y: belowCenter)
+        }
+        // ③ 上下都被顶死（最大化窗口）：浮在选区内部靠顶，垂直方向避开顶部手柄带
+        let insideCenter = r.minY + clearance + halfH
+        return CGPoint(x: x, y: min(max(insideCenter, halfH), max(halfH, screenH - halfH)))
+    }
+
+    /// 把工具栏中心点钳制到「整条工具栏都在屏幕内」；比屏幕还大时退化为居中。
+    private func clampToolbarCenter(_ p: CGPoint) -> CGPoint {
+        let screenW = NSScreen.main?.frame.width ?? 1000
+        let screenH = NSScreen.main?.frame.height ?? 800
+        let size = state.toolbarSize
+        let halfW = size.width / 2
+        let halfH = size.height / 2
+        let x = size.width >= screenW ? screenW / 2 : min(max(p.x, halfW), screenW - halfW)
+        let y = size.height >= screenH ? screenH / 2 : min(max(p.y, halfH), screenH - halfH)
+        return CGPoint(x: x, y: y)
+    }
+
+    /// 工具栏拖动：每帧都用「起始偏移 + 本次位移」重算（不在上一帧结果上累加，避免漂移），
+    /// 并在拖动过程中就钳制，免得松手后位置被纠正而「跳一下」。
+    private var toolbarDragGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { value in
+                if toolbarDragStart == nil { toolbarDragStart = state.toolbarDragOffset }
+                guard let start = toolbarDragStart else { return }
+                let base = toolbarBasePosition
+                let desired = CGPoint(x: base.x + start.width + value.translation.width,
+                                      y: base.y + start.height + value.translation.height)
+                let clamped = clampToolbarCenter(desired)
+                state.toolbarDragOffset = CGSize(width: clamped.x - base.x,
+                                                 height: clamped.y - base.y)
+            }
+            .onEnded { _ in toolbarDragStart = nil }
     }
 
     /// 选区下方「尺寸 + 操作提示」浮层的中心点，同样按实测尺寸整体钳制在屏幕内。
@@ -1077,8 +1184,16 @@ struct ScreenshotOverlayView: View {
         let halfW = w / 2, halfH = h / 2
 
         let x = w >= screenW ? screenW / 2 : min(max(r.midX, halfW), screenW - halfW)
-        let y = h >= screenH ? screenH / 2
-                             : min(max(r.maxY + 5 + halfH, halfH), screenH - halfH)
+        // 竖向：优先贴选区底边下方 5pt；下方放不下时（选区铺满整屏）浮到选区内部靠底，
+        // 并给底边手柄留出 `toolbarHandleClearance` —— 否则会压住 bottom / bottomLeft / bottomRight。
+        let belowCenter = r.maxY + 5 + halfH
+        let y: CGFloat
+        if belowCenter + halfH <= screenH {
+            y = belowCenter
+        } else {
+            y = min(max(r.maxY - Self.toolbarHandleClearance - halfH, halfH),
+                    max(halfH, screenH - halfH))
+        }
         return CGPoint(x: x, y: y)
     }
 
@@ -1180,6 +1295,10 @@ final class OverlayState: ObservableObject {
     /// 工具栏实测尺寸（由 `ToolbarSizeKey` 上报）。首帧尚未量到前用估值兜底，
     /// 只影响第一帧的钳制，量到后立刻纠正。
     @Published var toolbarSize: CGSize = CGSize(width: 380, height: 44)
+    /// 用户手动拖动工具栏产生的位移（相对自动计算的基准位置）。
+    /// 最大化窗口时选区几乎铺满整屏，工具栏无论放哪都会压在选区上，
+    /// 所以允许用户把它拖开；拖动结果只在本次截屏内有效。
+    @Published var toolbarDragOffset: CGSize = .zero
     /// 选区下方「尺寸 + 提示」浮层的实测尺寸（同为上报所得）
     @Published var labelStackSize: CGSize = .zero
 

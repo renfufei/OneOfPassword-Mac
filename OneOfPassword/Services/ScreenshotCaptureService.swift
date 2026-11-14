@@ -216,20 +216,49 @@ enum ScreenshotCaptureService {
 
     // MARK: - 输出
 
-    /// 弹出保存面板，写入 PNG。
-    static func savePanel(image: CGImage) {
-        let rep = NSBitmapImageRep(cgImage: image)
-        guard let png = rep.representation(using: .png, properties: [:]) else { return }
+    /// 保存框的默认文件名（不含扩展名）。扩展名交给 NSSavePanel 按 allowedContentTypes 补。
+    static func suggestedFileName() -> String {
+        "截屏 \(timestamp())"
+    }
 
-        // 全屏 Space 的覆盖层刻意不激活本应用；保存对话框仍需本应用在前台才可靠置前。
-        // 对话框结束后由 restoreAppWindows() 把焦点还给原全屏应用。
-        if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "截屏 \(timestamp()).png"
-        panel.prompt = "保存"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? png.write(to: url, options: .atomic)
+    private static let saveDirectoryKey = "screenshotLastSaveDirectory"
+
+    /// 保存框的默认目录：上次保存过的目录 → 桌面。
+    /// 不叫「保存位置设置」——用户改一次目录就记住，符合系统保存面板的习惯。
+    static var lastSaveDirectory: URL {
+        if let path = UserDefaults.standard.string(forKey: saveDirectoryKey) {
+            let url = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    /// 记住本次保存的目录，供下次保存框定位。
+    static func rememberSaveDirectory(of fileURL: URL) {
+        UserDefaults.standard.set(fileURL.deletingLastPathComponent().path, forKey: saveDirectoryKey)
+    }
+
+    /// 把图片写成 PNG。失败返回 false（目录不可写等），由调用方提示用户。
+    ///
+    /// 保存 UI 是系统 `NSSavePanel`，但**以 sheet 形式挂在不激活的覆盖层面板上**
+    ///（见 `ScreenshotOverlayController.presentSaveSheet`）：
+    /// 常规 `runModal()` 的保存面板是独立窗口、collectionBehavior 默认，一旦为了它激活本应用，
+    /// macOS 就会跳到「该窗口所在的桌面 Space」，保存框随之人间蒸发到默认桌面 —— 老 bug 的根因。
+    /// 作为 sheet 时它跟随父窗口出现在当前 Space，键盘输入由 sheet 自己接管。
+    @discardableResult
+    static func writePNG(image: CGImage, to url: URL) -> Bool {
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let png = rep.representation(using: .png, properties: [:]) else {
+            ScreenshotLogger.log("writePNG 编码失败")
+            return false
+        }
+        do {
+            try png.write(to: url, options: .atomic)
+            return true
+        } catch {
+            ScreenshotLogger.log("writePNG 写入失败 \(error.localizedDescription) url=\(url.path)")
+            return false
         }
     }
 
@@ -260,39 +289,105 @@ enum ScreenshotCaptureService {
         }
         let selfPid = Int(ProcessInfo.processInfo.processIdentifier)
 
+        // 解析单个窗口：# 只认默认层级（0）的普通窗口，跳过菜单栏 / Dock / 浮层
+        func rectOf(_ info: [String: Any]) -> CGRect? {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { return nil }
+            let alpha = info[kCGWindowAlpha as String] as? CGFloat ?? 1
+            guard alpha > 0.01 else { return nil }
+            guard let b = info[kCGWindowBounds as String] as? [String: CGFloat] else { return nil }
+            let w = b["Width"] ?? 0
+            let h = b["Height"] ?? 0
+            guard w > 10, h > 10 else { return nil }
+            return CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: w, height: h)
+        }
+
+        // ① 先确定「鼠标所在的最上层窗口属于哪个 App」。
+        var targetPid: Int?
+        var hit: CGRect?
         for info in infos {
             // 跳过本应用窗口（CG 字典值是 Int，不能用 pid_t(Int32) 直接 as? 转换）
             guard let pid = info[kCGWindowOwnerPID as String] as? Int, pid != selfPid else { continue }
-            // 只取默认层级（0）普通窗口，跳过菜单/Dock/浮层等
-            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
-            let alpha = info[kCGWindowAlpha as String] as? CGFloat ?? 1
-            guard alpha > 0.01 else { continue }
-            guard let b = info[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
-            let w = b["Width"] ?? 0
-            let h = b["Height"] ?? 0
-            guard w > 10, h > 10 else { continue }
-            let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: w, height: h)
-            if r.contains(mouse) {
-                // CG 窗口坐标是全局左上原点，平移到 NSScreen.main 局部（overlay 视图坐标）。
-                // 用 CGDisplayBounds 拿 main screen 在 CG 坐标系的 origin，多屏也正确。
-                guard let mainScreen = NSScreen.main,
-                      let displayID = mainScreen.deviceDescription[
-                        NSDeviceDescriptionKey("NSScreenNumber")
-                      ] as? CGDirectDisplayID else {
-                    ScreenshotLogger.log("windowAtMouse matched pid=\(pid) layer=\(layer) raw=\(r) (no mainScreen, return raw)")
-                    return r
-                }
-                let screenCG = CGDisplayBounds(displayID)
-                let out = CGRect(x: r.origin.x - screenCG.origin.x,
-                                y: r.origin.y - screenCG.origin.y,
-                                width: r.width,
-                                height: r.height)
-                ScreenshotLogger.log("windowAtMouse matched pid=\(pid) layer=\(layer) raw=\(r) out=\(out)")
-                return out
-            }
+            guard let r = rectOf(info), r.contains(mouse) else { continue }
+            targetPid = pid
+            hit = r
+            break
         }
-        ScreenshotLogger.log("windowAtMouse no match, mouse=\(mouse) count=\(infos.count)")
-        return nil
+        guard let pid = targetPid, let hitRect = hit else {
+            ScreenshotLogger.log("windowAtMouse no match, mouse=\(mouse) count=\(infos.count)")
+            return nil
+        }
+
+        // ② 同一个 App 的窗口常被系统拆成多块 layer==0 顶层窗口。
+        //    例（真实日志）：Chrome 最大化时标签栏 (0,33,1728,41)、工具条 (0,74,1728,47)、
+        //    页面 (0,121,1728,996) 各算一个窗口。只取鼠标命中那块，就会预选成一条 41pt 高的横条。
+        //    这里把同一 PID 里「边缘对齐且紧邻」的兄弟块拼回一整块。
+        var siblings: [CGRect] = [hitRect]
+        for info in infos {
+            guard let p = info[kCGWindowOwnerPID as String] as? Int, p == pid else { continue }
+            guard let r = rectOf(info), r != hitRect else { continue }
+            siblings.append(r)
+        }
+        let merged = mergeAlignedWindows(siblings) ?? hitRect
+        ScreenshotLogger.log("windowAtMouse matched pid=\(pid) hit=\(hitRect) merged=\(merged) parts=\(siblings.count)")
+
+        // ③ CG 窗口坐标是全局左上原点，平移到 NSScreen.main 局部（overlay 视图坐标）。
+        //    用 CGDisplayBounds 拿 main screen 在 CG 坐标系的 origin，多屏也正确。
+        guard let mainScreen = NSScreen.main,
+              let displayID = mainScreen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")
+              ] as? CGDirectDisplayID else {
+            return merged
+        }
+        let screenCG = CGDisplayBounds(displayID)
+        let out = CGRect(x: merged.origin.x - screenCG.origin.x,
+                        y: merged.origin.y - screenCG.origin.y,
+                        width: merged.width,
+                        height: merged.height)
+        ScreenshotLogger.log("windowAtMouse out=\(out)")
+        return out
+    }
+
+    /// 两块窗口是否「同属一个被拆开的窗口」：某一维的两条边完全对齐（差 ≤ tolerance），
+    /// 另一维紧邻（间隙 ≤ tolerance）或重叠。
+    /// 只做保守判定 —— 并排的两个独立窗口边缘不会同时对齐，所以不会被误并。
+    static func isAlignedNeighbor(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 2) -> Bool {
+        let xAligned = abs(a.minX - b.minX) <= tolerance && abs(a.maxX - b.maxX) <= tolerance
+        let yAligned = abs(a.minY - b.minY) <= tolerance && abs(a.maxY - b.maxY) <= tolerance
+        if xAligned {
+            // 上下堆叠：只要求纵向邻接
+            let gap = max(a.minY, b.minY) - min(a.maxY, b.maxY)
+            if gap <= tolerance { return true }
+        }
+        if yAligned {
+            // 左右并排：只要求横向邻接
+            let gap = max(a.minX, b.minX) - min(a.maxX, b.maxX)
+            if gap <= tolerance { return true }
+        }
+        return false
+    }
+
+    /// 以面积最大的块为起点，反复并入「对齐且紧邻」的块，直到稳定。
+    /// 返回覆盖所有已并入块的外接矩形；空数组返回 nil。
+    static func mergeAlignedWindows(_ rects: [CGRect], tolerance: CGFloat = 2) -> CGRect? {
+        guard var union = rects.max(by: { $0.width * $0.height < $1.width * $1.height }) else {
+            return nil
+        }
+        var rest = rects.filter { $0 != union }
+        var changed = true
+        while changed {
+            changed = false
+            var pending: [CGRect] = []
+            for r in rest {
+                if isAlignedNeighbor(union, r, tolerance: tolerance) {
+                    union = union.union(r)
+                    changed = true
+                } else {
+                    pending.append(r)
+                }
+            }
+            rest = pending
+        }
+        return union
     }
 
     // MARK: - 原生全屏 Space 识别
