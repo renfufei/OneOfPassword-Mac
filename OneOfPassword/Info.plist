@@ -22,15 +22,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.76</string>
+	<string>1.78</string>
 	<key>CFBundleVersion</key>
-	<string>76</string>
+	<string>78</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSCameraUsageDescription</key>
 	<string>需要摄像头权限来扫描 GA 二维码</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026. All rights reserved.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>录屏时录制讲解旁白需要麦克风权限</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

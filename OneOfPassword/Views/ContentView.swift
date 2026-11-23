@@ -9,7 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum SidebarSection: String, Hashable {
-    case vault, settings, screenshot
+    case vault, settings, screenshot, recording
 }
 
 struct ContentView: View {
@@ -66,6 +66,12 @@ struct ContentView: View {
                     sidebar
                 } detail: {
                     ScreenshotSettingsView()
+                }
+            } else if selectedSection == .recording {
+                NavigationSplitView {
+                    sidebar
+                } detail: {
+                    RecordingSettingsView()
                 }
             } else if needsVaultUnlock {
                 // 未通过验证：第二列（条目列表）也不给 —— 条目名称本身就是信息，
@@ -180,6 +186,7 @@ struct ContentView: View {
         List(selection: $selectedSection) {
             Label("保险库", systemImage: "person.badge.key.fill").tag(SidebarSection.vault)
             Label("截屏",   systemImage: "crop").tag(SidebarSection.screenshot)
+            Label("录屏",   systemImage: "record.circle").tag(SidebarSection.recording)
             Label("设置",   systemImage: "gearshape.fill").tag(SidebarSection.settings)
         }
         .navigationTitle("OneOfPassword")

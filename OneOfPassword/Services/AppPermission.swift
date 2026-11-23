@@ -6,7 +6,7 @@
 //
 //  为什么要单独抽一层：
 //  「屏幕录制」不是「截屏功能」的私有设置，它是**应用级**能力（每个 App 在 TCC 里只有一条记录）。
-//  目前它有两个消费者 —— ① 截屏 / 标注；② 扫描 GA 验证码时的「截取屏幕」。
+//  目前它有三个消费者 —— ① 截屏 / 标注；② 扫描 GA 验证码时的「截取屏幕」；③ 录屏。
 //  过去两处各自调 `CGPreflightScreenCaptureAccess()`、各自写一份引导文案：
 //    · 状态口径容易漂移（一处改了另一处忘）；
 //    · GA 那条路径直接跳 macOS 系统设置，用户永远看不到应用内的状态与诊断日志；
@@ -24,10 +24,12 @@ import Foundation
 /// 应用需要向系统申请的权限。新增一种权限时，只需在这里加一个 case ——
 /// 设置页的「系统权限」区块会自动多出一行（UI 完全由 `AppPermission.allCases` 驱动）。
 enum AppPermission: String, CaseIterable, Identifiable {
-    /// 屏幕录制：截屏标注 + 验证码「截取屏幕」
+    /// 屏幕录制：截屏标注 + 验证码「截取屏幕」+ 录屏
     case screenRecording
     /// 摄像头：验证码「摄像头扫描」
     case camera
+    /// 麦克风：录屏的旁白/讲解音轨
+    case microphone
 
     var id: String { rawValue }
 
@@ -35,6 +37,7 @@ enum AppPermission: String, CaseIterable, Identifiable {
         switch self {
         case .screenRecording: return "屏幕录制"
         case .camera:          return "摄像头"
+        case .microphone:      return "麦克风"
         }
     }
 
@@ -42,14 +45,16 @@ enum AppPermission: String, CaseIterable, Identifiable {
         switch self {
         case .screenRecording: return "rectangle.dashed.badge.record"
         case .camera:          return "camera.fill"
+        case .microphone:      return "mic.fill"
         }
     }
 
     /// 谁在用它 —— 直接印在界面上，用户一眼知道「不给会怎样」
     var usedBy: String {
         switch self {
-        case .screenRecording: return "截屏标注 · 验证码截取屏幕"
+        case .screenRecording: return "截屏标注 · 验证码截取屏幕 · 录屏"
         case .camera:          return "验证码摄像头扫描"
+        case .microphone:      return "录屏旁白（音频来源选「麦克风」时）"
         }
     }
 
@@ -57,9 +62,11 @@ enum AppPermission: String, CaseIterable, Identifiable {
     var purpose: String {
         switch self {
         case .screenRecording:
-            return "截取屏幕内容用于标注，或识别屏幕上的验证码二维码。画面只在本机处理，不上传、不留存。"
+            return "截取屏幕内容用于标注、识别屏幕上的验证码二维码，或录制屏幕视频。画面只在本机处理，不上传。"
         case .camera:
             return "扫描 Google Authenticator 等验证器出示的二维码。画面只在本机实时解析，不录制、不外传。"
+        case .microphone:
+            return "录制讲解旁白。声音只会写进你自己选择的录制文件，不上传、不外传。"
         }
     }
 
@@ -71,6 +78,7 @@ enum AppPermission: String, CaseIterable, Identifiable {
         switch self {
         case .screenRecording: return "Privacy_ScreenCapture"
         case .camera:          return "Privacy_Camera"
+        case .microphone:      return "Privacy_Microphone"
         }
     }
 
@@ -84,12 +92,18 @@ enum AppPermission: String, CaseIterable, Identifiable {
         case .screenRecording:
             return CGPreflightScreenCaptureAccess() ? .authorized : .denied
         case .camera:
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-            case .authorized:          return .authorized
-            case .notDetermined:       return .notDetermined
-            case .denied, .restricted: return .denied
-            @unknown default:          return .denied
-            }
+            return Self.avStatus(.video)
+        case .microphone:
+            return Self.avStatus(.audio)
+        }
+    }
+
+    private static func avStatus(_ mediaType: AVMediaType) -> AppPermissionStatus {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized:          return .authorized
+        case .notDetermined:       return .notDetermined
+        case .denied, .restricted: return .denied
+        @unknown default:          return .denied
         }
     }
 
@@ -105,6 +119,12 @@ enum AppPermission: String, CaseIterable, Identifiable {
         case .camera:
             if status == .notDetermined {
                 AVCaptureDevice.requestAccess(for: .video) { _ in }
+            } else {
+                openSystemSettings()
+            }
+        case .microphone:
+            if status == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .audio) { _ in }
             } else {
                 openSystemSettings()
             }

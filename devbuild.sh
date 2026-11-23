@@ -52,9 +52,12 @@ fi
 info "构建成功"
 
 # 4. 重置 TCC 权限（避免旧条目干扰）
-info "重置 TCC 权限（截屏 / 辅助功能）..."
+info "重置 TCC 权限（截屏 / 辅助功能 / 麦克风）..."
 tccutil reset ScreenCapture "$BUNDLE_ID" 2>/dev/null || true
 tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
+# 麦克风同属「绑 cdhash」的权限：重建后旧条目会变成「显示已开启但实际拒绝」的僵尸态，
+# 一起重置，首次用「麦克风」音源时重新授权即可。
+tccutil reset Microphone "$BUNDLE_ID" 2>/dev/null || true
 
 # 5. 清空截屏日志
 rm -f "$HOME/Library/Logs/OneOfPassword-screenshot.log" 2>/dev/null || true
