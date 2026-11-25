@@ -195,9 +195,8 @@ final class RecordingCoordinator {
             onDiscard: {},
             onTogglePause: {},
             onReveal: { [weak self] url in
-                // 先关掉浮层再激活 Finder：这张 HUD 是 `.nonactivatingPanel`，
-                // 但只要它还挂在屏幕上，本应用就握着激活权，Finder 的新窗口会开在
-                // 本应用后面（「我之前那个 Finder 窗口还开着，就怎么点都不出来」）。
+                // 先把浮层收起来再动 Finder：别让这块 .statusBar 级别的面板继续压在
+                // 刚被提上来的访达窗口上面。
                 self?.hud.dismiss()
                 Self.revealInFinder(url)
             },
@@ -342,34 +341,50 @@ final class RecordingCoordinator {
 
     // MARK: - 工具
 
-    /// 在访达里选中文件，并把前台让给 Finder。
+    /// 在访达里选中文件，并把前台真的交给 Finder。
     ///
-    /// 只用 `activateFileViewerSelecting` 是不够的：Finder 已经在运行、并且还开着窗口时，
-    /// 它会把新窗口开出来，但**激活权仍留在本应用**（HUD 面板是 nonactivating，
-    /// 可出现结果卡片这段时间用户很可能就是从本应用点的），于是「新窗口开在别人后面」。
-    /// 这里显式把激活权让出去，再让 Finder 把所有窗口提上来。
+    /// **为什么不能只调 `activateFileViewerSelecting`**：它只保证「窗口摆出来」，
+    /// 不保证「Finder 拿到前台」。而 `NSRunningApplication.activate` 在 macOS 14 起是
+    /// 协作式激活——只有当本应用持有激活权时才允许把别人提上来。结果卡片这块 HUD 是
+    /// `.nonactivatingPanel`，点它的按钮**不会**让本应用获得激活权，所以这时
+    /// `activate(options:)` 和 `activate(from:)` 都直接返回 false（本机 27.2 实测）：
+    ///   后台态：reveal→yield→activate           → return false，frontmost 仍是原应用
+    ///   后台态：reveal→yield→activate(from:)    → return false，同上
+    ///   后台态：只调 activateFileViewerSelecting → 窗口出来但前台不动  ← 用户看到的症状
+    ///
+    /// **能走通的路只剩 LaunchServices**：以 `activates = true` 打开文件所在文件夹，
+    /// 系统会替我们把 Finder 激活（相当于一次「打开文件夹」的用户动作，不需要本应用
+    /// 有激活权，实测后台态下 frontmost 成功变成 com.apple.finder）。随后再补一次
+    /// `activateFileViewerSelecting` 把文件选中——目录已经在窗口里，不会另开新窗口。
     static func revealInFinder(_ url: URL) {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        let folder = url.deletingLastPathComponent()
+        ScreenshotLogger.log("reveal in finder: \(url.lastPathComponent)")
 
-        guard let finder = NSRunningApplication
-            .runningApplications(withBundleIdentifier: "com.apple.finder").first else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true            // 关键：让系统把 Finder 提到前台
+        config.addsToRecentItems = false   // 别把录制目录塞进「最近使用」
 
-        // macOS 14 起有协作式激活：先声明「我让给你」，对方再激活才不会互相盖回去
-        if #available(macOS 14.0, *) {
-            NSApp.yieldActivation(to: finder)
-        }
-        // activateAllWindows：用户之前开着的 Finder 窗口也一并提到前面，
-        // 而不是只把新窗口浮上来、旧窗口还压在本应用下面
-        finder.activate(options: [.activateAllWindows])
+        NSWorkspace.shared.open(folder, configuration: config) { _, error in
+            if let error {
+                ScreenshotLogger.log("reveal open folder failed: \(error.localizedDescription)")
+            }
+            // 等 Finder 把窗口摆好再选中。0.3s 是实测值：更早调用偶尔会在旧窗口里
+            // 选中失败（新窗口还没 key），用户看到的就是「窗口开了但没高亮文件」。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
 
-        // Finder 处理激活是异步的，实测偶发「刚 activate 完本应用又抢回前台」，
-        // 稍后再补一次；此时用户已经看到 Finder 起来了，补这一次不会造成可见跳动。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.finder" {
-                finder.activate(options: [.activateAllWindows])
+                // 兜底：万一 Finder 仍没到前台（极少见），再试着 activate 一次。
+                // 这一步在后台态本来会被拒，留着只是为了让「本应用恰好在前台」时更稳。
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.finder",
+                          let finder = NSRunningApplication
+                            .runningApplications(withBundleIdentifier: "com.apple.finder").first
+                    else { return }
+                    if #available(macOS 14.0, *) { NSApp.yieldActivation(to: finder) }
+                    finder.activate(options: [.activateAllWindows])
+                }
             }
         }
-        ScreenshotLogger.log("reveal in finder: \(url.lastPathComponent)")
     }
 
     private static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {

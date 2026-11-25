@@ -129,23 +129,9 @@ struct SettingsView: View {
     // MARK: - 关于 / 项目链接
 
     /// 放在「导入 / 导出」之前：后者必须保持页面最后一项（低频且带风险，沉底避免误点）。
+    /// 内容（链接 + 二维码 + 版本信息）在 `AboutSectionView` 里，拆出去是为了能离线渲染核对。
     private var aboutSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("关于", systemImage: "info.circle.fill")
-                    .font(.headline)
-
-                HStack(spacing: 8) {
-                    Link("GitHub 项目首页", destination: AppLinks.githubHomepage)
-                        .help("在浏览器中打开 \(AppLinks.githubHomepage.absoluteString)")
-                    Text("查看源码、反馈问题与下载新版本")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            }
-            .padding(8)
-        }
+        AboutSectionView()
     }
 
     // MARK: - 导入 / 导出区块

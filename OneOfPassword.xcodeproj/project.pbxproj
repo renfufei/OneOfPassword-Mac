@@ -19,6 +19,7 @@
 		26E40079A0FDF58CAA94A554 /* RecordingAreaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AAD22B556566FD80DB9B4BA /* RecordingAreaView.swift */; };
 		2CBDC42C457CB962330BA0AA /* RecordingRegionMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F07116105D60D5F34909E7 /* RecordingRegionMark.swift */; };
 		2F8F4E2088D191AC092F4378 /* OnePUXImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51145A85C35D815EEA083C8 /* OnePUXImporter.swift */; };
+		3115693A7E17A701FE77D85B /* QRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFC5573A90A1C5D7B3DC925 /* QRCode.swift */; };
 		385A953B7937C2BA08222C6A /* AuthPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8434C2609890FBA7F349A6F8 /* AuthPolicy.swift */; };
 		3CCE77C6C258CAEF17DFBB34 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E725D4B8CF3B9F5046B54AC6 /* Assets.xcassets */; };
 		3F1D43508133611FC47F759C /* QRCodeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B846B9EDCD28231B4A07F711 /* QRCodeDetector.swift */; };
@@ -31,7 +32,9 @@
 		63E4F631A2C6A981E6A1FE55 /* AnnotationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */; };
 		66257EC1D900D1DE7B751B4A /* EditingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23447C775659B86B06F6F3CA /* EditingState.swift */; };
 		69B1A83AF1D052E3AA07388C /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768BE1B4C7924E76F21F1580 /* QRScannerView.swift */; };
+		6D54077C4A5507FE65F874FD /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC13953337720361B8B8BF3 /* AppVersion.swift */; };
 		7147ADB3A359569AF92E24BC /* ScreenshotCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E500CC06D5E60BD9076BE49A /* ScreenshotCaptureService.swift */; };
+		73325E7630ED74524126501F /* AboutSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18FFB3B8E68A79F4CEC563B0 /* AboutSection.swift */; };
 		7B1B66E644B4BFD52055415C /* RecordingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E120CE39F76162E9117FC6F /* RecordingPreferences.swift */; };
 		865A6F614123D1EAC382B6DE /* AccountListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842B9020A1D36AA115739212 /* AccountListViewModel.swift */; };
 		8BDB0452024FF695131635EF /* AppControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1BCB6CE839D0B4006A349B /* AppControls.swift */; };
@@ -69,12 +72,15 @@
 		1224F16ACC10E751E264DDE7 /* RecordingHUDController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingHUDController.swift; sourceTree = "<group>"; };
 		175266EEA35799F72532C4C0 /* PasswordItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordItem.swift; sourceTree = "<group>"; };
 		17FA99878F35C2B84C0BFD52 /* AnnotationToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationToolbar.swift; sourceTree = "<group>"; };
+		18FFB3B8E68A79F4CEC563B0 /* AboutSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSection.swift; sourceTree = "<group>"; };
+		1AFC5573A90A1C5D7B3DC925 /* QRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCode.swift; sourceTree = "<group>"; };
 		23447C775659B86B06F6F3CA /* EditingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditingState.swift; sourceTree = "<group>"; };
 		38615C080E045A0BA09825C7 /* CopyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyButton.swift; sourceTree = "<group>"; };
 		3FB2D9029679A2778BFBFC49 /* EncryptedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedStore.swift; sourceTree = "<group>"; };
 		41C72EA9D7A28050B00297D6 /* ScreenshotSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSettingsView.swift; sourceTree = "<group>"; };
 		44B349E415A32ACF2975C1B5 /* AnnotationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationModel.swift; sourceTree = "<group>"; };
 		486A61FE6CAE2850CB686857 /* PermissionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionViews.swift; sourceTree = "<group>"; };
+		4AC13953337720361B8B8BF3 /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		4B1BCB6CE839D0B4006A349B /* AppControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppControls.swift; sourceTree = "<group>"; };
 		4EA33D4FC7E831D92CB8DAB7 /* AppPermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPermission.swift; sourceTree = "<group>"; };
 		4FD84ECBA0B7E0DF01E785F7 /* OneOfPassword.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OneOfPassword.entitlements; sourceTree = "<group>"; };
@@ -229,8 +235,10 @@
 		B431BCF3C8A207521C71A7BE /* Utils */ = {
 			isa = PBXGroup;
 			children = (
+				4AC13953337720361B8B8BF3 /* AppVersion.swift */,
 				9F596C65B923B396579BFC8A /* ClipboardManager.swift */,
 				F4EA728F848D9B1182FDEF44 /* Extensions.swift */,
+				1AFC5573A90A1C5D7B3DC925 /* QRCode.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -258,6 +266,7 @@
 		F189B22AA14172403AF1DF2A /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				18FFB3B8E68A79F4CEC563B0 /* AboutSection.swift */,
 				4B1BCB6CE839D0B4006A349B /* AppControls.swift */,
 				38615C080E045A0BA09825C7 /* CopyButton.swift */,
 			);
@@ -335,6 +344,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				73325E7630ED74524126501F /* AboutSection.swift in Sources */,
 				9F077A58889554046437E351 /* AccountListView.swift in Sources */,
 				865A6F614123D1EAC382B6DE /* AccountListViewModel.swift in Sources */,
 				63E4F631A2C6A981E6A1FE55 /* AnnotationModel.swift in Sources */,
@@ -342,6 +352,7 @@
 				8BDB0452024FF695131635EF /* AppControls.swift in Sources */,
 				45D1A20855B7ECB120549970 /* AppDelegate.swift in Sources */,
 				C50D0109B4980DE9FEDABED9 /* AppPermission.swift in Sources */,
+				6D54077C4A5507FE65F874FD /* AppVersion.swift in Sources */,
 				385A953B7937C2BA08222C6A /* AuthPolicy.swift in Sources */,
 				574EDF779AC0FCF6533DA894 /* ClipboardManager.swift in Sources */,
 				DD23DD7877D83988541AE8DF /* ContentView.swift in Sources */,
@@ -366,6 +377,7 @@
 				D04A529326991CB7A3CE77B2 /* PasswordItem.swift in Sources */,
 				DD9ADAC4369B9C627BF0C93C /* PasswordListViewModel.swift in Sources */,
 				243AFE4635C59A92ACF08C24 /* PermissionViews.swift in Sources */,
+				3115693A7E17A701FE77D85B /* QRCode.swift in Sources */,
 				3F1D43508133611FC47F759C /* QRCodeDetector.swift in Sources */,
 				69B1A83AF1D052E3AA07388C /* QRScannerView.swift in Sources */,
 				5B21E40B5E597439AADE7A37 /* RecordingAreaController.swift in Sources */,

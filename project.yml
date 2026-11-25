@@ -30,8 +30,8 @@ targets:
         CFBundleName: OneOfPassword
         CFBundleDisplayName: OneOfPassword
         CFBundleIdentifier: com.oneofpassword.app
-        CFBundleVersion: "78"
-        CFBundleShortVersionString: "1.78"
+        CFBundleVersion: "79"
+        CFBundleShortVersionString: "1.79"
         # 开发区域 + 声明中文：决定系统级对话框（NSSavePanel / NSOpenPanel）的界面语言。
         # 只声明 en 时，系统保存面板会给中文用户弹英文的「Save As / Tags / Where / Cancel」。
         CFBundleDevelopmentRegion: zh_CN
